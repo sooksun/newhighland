@@ -1,0 +1,17 @@
+# newhighland — Apache config (Laragon)
+Options -Indexes
+
+# ปิดกั้นการเข้าถึงโฟลเดอร์/ไฟล์ภายในจากเว็บโดยตรง
+RedirectMatch 403 ^/?(app|config|database|docs|docsref)(/|$)
+<FilesMatch "\.(md|sql|json|lock|txt|xlsx)$">
+    Require all denied
+</FilesMatch>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # ส่งทุก request ที่ไม่ใช่ไฟล์/โฟลเดอร์จริง ไปยัง front controller
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [L]
+</IfModule>
