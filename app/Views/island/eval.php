@@ -5,6 +5,10 @@ use App\Models\IslandOption;
 
 $val = fn($k, $d = '') => View::e($e[$k] ?? $d);
 $num = fn($k) => (string) ($e[$k] ?? '');
+$fmtTel = function (string $tel): string {
+    $d = preg_replace('/\D/', '', $tel);
+    return strlen($d) === 10 ? substr($d,0,3).'-'.substr($d,3,3).'-'.substr($d,6,4) : $tel;
+};
 $radio = function (string $name, string $nn, $current) {
     $h = '';
     foreach (IslandOption::get($nn) as $o) {
@@ -36,6 +40,7 @@ $canSpt = Auth::isAdmin();
   <span class="badge badge-neutral"><?= View::e($ctx['sc_name']) ?> · <?= View::e($ctx['sc_id']) ?></span>
   <span class="badge badge-neutral"><?= nh_icon('calendar', 12) ?> ปี <?= View::e(App::acadYear()) ?></span>
 </div>
+<div style="margin-bottom:var(--s-4);"><?= nh_island_stepper('eval') ?></div>
 
 <div class="card card-pad nh-row between wrap gap-3 mb-4">
   <div>
@@ -78,9 +83,15 @@ $canSpt = Auth::isAdmin();
           </select>
         </div>
         <div class="col-md-3"><label class="form-label">ผู้อำนวยการ</label><input class="form-control" name="director_name" value="<?= $val('director_name') ?>"></div>
-        <div class="col-md-3"><label class="form-label">โทร ผอ.</label><input class="form-control" name="director_tel" value="<?= $val('director_tel') ?>"></div>
+        <div class="col-md-3"><label class="form-label">โทร ผอ.</label>
+          <input class="form-control tel-fmt" name="director_tel" inputmode="numeric" maxlength="12" placeholder="081-277-1948" pattern="\d{3}-\d{3}-\d{4}" value="<?= View::e($fmtTel($val('director_tel'))) ?>">
+          <div class="invalid-feedback">กรุณากรอกเบอร์โทร 10 หลัก</div>
+        </div>
         <div class="col-md-3"><label class="form-label">ผู้กรอกข้อมูล</label><input class="form-control" name="editor_name" value="<?= $val('editor_name') ?>"></div>
-        <div class="col-md-3"><label class="form-label">โทรผู้กรอก</label><input class="form-control" name="editor_tel" value="<?= $val('editor_tel') ?>"></div>
+        <div class="col-md-3"><label class="form-label">โทรผู้กรอก</label>
+          <input class="form-control tel-fmt" name="editor_tel" inputmode="numeric" maxlength="12" placeholder="081-277-1948" pattern="\d{3}-\d{3}-\d{4}" value="<?= View::e($fmtTel($val('editor_tel'))) ?>">
+          <div class="invalid-feedback">กรุณากรอกเบอร์โทร 10 หลัก</div>
+        </div>
         <div class="col-12"><label class="form-label">ที่อยู่</label><input class="form-control" name="adresss" value="<?= $val('adresss') ?>"></div>
         <div class="col-md-3"><label class="form-label">หมู่บ้าน</label><input class="form-control" name="viledges" value="<?= $val('viledges') ?>"></div>
         <div class="col-md-1"><label class="form-label">หมู่</label><input class="form-control" name="moo" value="<?= $num('moo') ?>"></div>
@@ -199,12 +210,34 @@ $canSpt = Auth::isAdmin();
   function sumBy(cls,target){let s=0;document.querySelectorAll(cls).forEach(i=>s+=(parseInt(i.value)||0));document.getElementById(target).value=s;}
   document.querySelectorAll('.stu').forEach(i=>i.addEventListener('input',()=>sumBy('.stu','stu_sum_view')));
   document.querySelectorAll('.tch').forEach(i=>i.addEventListener('input',()=>sumBy('.tch','tch_sum_view')));
+  document.querySelectorAll('input.tel-fmt').forEach(function(inp){
+    inp.addEventListener('input',function(){
+      const d=this.value.replace(/\D/g,'').slice(0,10);
+      if(d.length<=3)this.value=d;
+      else if(d.length<=6)this.value=d.slice(0,3)+'-'+d.slice(3);
+      else this.value=d.slice(0,3)+'-'+d.slice(3,6)+'-'+d.slice(6);
+    });
+  });
   window.islandCert=async function(level){
     const status=document.getElementById(level+'_status').value, comment=document.getElementById(level+'_comment').value;
     const body=new URLSearchParams({_csrf:csrf,sc_id:scId,level,status,comment});
     const r=await fetch(certUrl,{method:'POST',body,headers:{'X-Requested-With':'XMLHttpRequest'}});
     const d=await r.json(); alert(d.ok?'บันทึกการรับรองเรียบร้อย':'บันทึกไม่สำเร็จ');
   };
+
+  // ด่านคัดกรอง: กันการส่งฟอร์มโดยยังไม่ตอบข้อ 1.1 (เป็นเกาะหรือไม่)
+  // เพราะถ้าไม่เลือก ระบบจะจัดเป็น "ไม่ใช่พื้นที่เกาะ" โดยผู้ใช้อาจไม่ตั้งใจ
+  const evalForm=document.querySelector('form[action$="island/eval/save"]');
+  if(evalForm){
+    evalForm.addEventListener('submit',function(e){
+      if(!evalForm.querySelector('input[name="citeria01"]:checked')){
+        e.preventDefault();
+        const tabBtn=document.querySelector('[data-bs-target="#it-geo"]');
+        if(tabBtn) tabBtn.click();
+        alert('กรุณาตอบข้อ 1.1 (ด่านคัดกรอง): โรงเรียนตั้งอยู่ในพื้นที่ที่เป็นเกาะหรือไม่\nหากไม่เลือก ระบบจะถือว่าไม่ใช่พื้นที่เกาะ');
+      }
+    });
+  }
 })();
 </script>
 </div><!-- /.container -->

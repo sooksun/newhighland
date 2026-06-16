@@ -46,9 +46,11 @@ class IslandEvalController
     {
         Auth::require();
         if (Auth::isSchool()) {
+            $scId = (int) Auth::scId();
             View::render('island/select', [
                 'title' => 'เริ่มประเมินพื้นที่เกาะ', 'mode' => 'school',
-                'sc_id' => Auth::scId(), 'sc_name' => Auth::name(), 'sao_name' => Auth::saoName(),
+                'sc_id' => $scId, 'sc_name' => Auth::name(), 'sao_name' => Auth::saoName(),
+                'in_roster' => \App\Models\SchoolConfirm::inRoster(\App\Models\SchoolConfirm::AREA_ISLAND, $this->year, (string) $scId),
             ]);
             return;
         }
@@ -67,6 +69,16 @@ class IslandEvalController
         $scId = (int) Request::post('sc_id', 0);
         if (!$scId || !Auth::canAccessSchool($scId)) {
             Flash::error('ไม่พบโรงเรียน หรือไม่มีสิทธิ์'); App::redirect('island');
+        }
+        // โรงเรียนพื้นที่เกาะเดิม (ในรายชื่อ) ผ่านประเมินแล้ว → ไม่ต้องประเมินใหม่ ให้ไปรับรองการคงอยู่
+        if (\App\Models\SchoolConfirm::inRoster(\App\Models\SchoolConfirm::AREA_ISLAND, $this->year, (string) $scId)) {
+            Flash::info('โรงเรียนนี้เป็นพื้นที่เกาะเดิม (ผ่านการประเมินแล้ว) — โปรดยืนยันที่หน้ารับรองการคงอยู่');
+            App::redirect('confirm?area=' . \App\Models\SchoolConfirm::AREA_ISLAND);
+        }
+        // กรองเบื้องต้น: คัดกรองพื้นที่เกาะได้เฉพาะโรงเรียนในจังหวัดที่เคยมีพื้นที่เกาะ
+        if (!\App\Models\SchoolConfirm::isEligibleSchool(\App\Models\SchoolConfirm::AREA_ISLAND, $this->year, (string) $scId)) {
+            Flash::error('โรงเรียนนี้อยู่ในจังหวัดที่ไม่เคยมีโรงเรียนพื้นที่เกาะ จึงไม่เข้าเกณฑ์คัดกรองพื้นที่เกาะ');
+            App::redirect('island');
         }
         $ctx = SchoolContext::build($scId, $this->year);
         IslandEval::ensure($scId, $this->year, $ctx['sc_name'], $ctx['province']);

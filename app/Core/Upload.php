@@ -5,6 +5,8 @@ namespace App\Core;
 class Upload
 {
     private const ALLOWED = ['pdf', 'jpg', 'jpeg', 'png'];
+    /** ชนิดไฟล์จริง (MIME) ที่อนุญาต — คู่กับ ALLOWED เพื่อกันการเปลี่ยนนามสกุลไฟล์อันตราย */
+    private const ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
     private const MAX_BYTES = 8388608; // 8 MB
 
     /**
@@ -20,6 +22,13 @@ class Upload
         $ext = strtolower(pathinfo((string) $f['name'], PATHINFO_EXTENSION));
         if (!in_array($ext, self::ALLOWED, true) || $f['size'] <= 0 || $f['size'] > self::MAX_BYTES) {
             return null;
+        }
+        // ตรวจชนิดไฟล์จริงจากเนื้อหา (กันไฟล์อันตรายที่เปลี่ยนนามสกุล เช่น .php → .jpg)
+        if (class_exists('finfo')) {
+            $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($f['tmp_name']);
+            if ($mime === false || !in_array(strtolower((string) $mime), self::ALLOWED_MIME, true)) {
+                return null;
+            }
         }
         $destRelDir = trim($destRelDir, '/');
         $absDir = App::rootDir() . '/' . $destRelDir;

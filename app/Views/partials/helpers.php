@@ -94,19 +94,9 @@ if (!function_exists('nh_icon')) {
             . $paths[$name] . '</svg>';
     }
 
-    /**
-     * Stepper ขั้นตอนการประเมินพื้นที่สูง (select → map → elev → eval → print)
-     * @param string $current id ของขั้นปัจจุบัน
-     */
-    function nh_stepper(string $current): string
+    /** render stepper จากชุดขั้นตอน $steps = [[id,label,sub,icon], ...] */
+    function nh_render_stepper(array $steps, string $current): string
     {
-        $steps = [
-            ['select', 'เลือกโรงเรียน',     'สังกัด · โรงเรียน',       'school'],
-            ['map',    'ปักหมุด',           'พิกัด · ความสูง ณ จุด',   'mapPin'],
-            ['elev',   'วัดความสูง/ระยะ',    'เส้นทาง · ภูเขา/ราบ',     'ruler'],
-            ['eval',   'แบบประเมิน 16 ข้อ',  'กรอก · คิดคะแนน',         'clipboard'],
-            ['print',  'พิมพ์ผล',           'ออกเอกสาร PDF',           'printer'],
-        ];
         $idx = 0;
         foreach ($steps as $i => $s) {
             if ($s[0] === $current) { $idx = $i; break; }
@@ -125,6 +115,90 @@ if (!function_exists('nh_icon')) {
             }
         }
         return $h . '</div>';
+    }
+
+    /**
+     * Stepper ประเมินพื้นที่สูง (select → map → elev → eval → print → cert)
+     * @param string $current id ของขั้นปัจจุบัน
+     */
+    function nh_stepper(string $current): string
+    {
+        return nh_render_stepper([
+            ['select', 'เลือกโรงเรียน',     'สังกัด · โรงเรียน',       'school'],
+            ['map',    'ปักหมุด',           'พิกัด · ความสูง ณ จุด',   'mapPin'],
+            ['elev',   'วัดความสูง/ระยะ',    'เส้นทาง · ภูเขา/ราบ',     'ruler'],
+            ['eval',   'แบบประเมิน 16 ข้อ',  'กรอก · คิดคะแนน',         'clipboard'],
+            ['print',  'พิมพ์ผล',           'ออกเอกสาร PDF',           'printer'],
+            ['cert',   'รับรองโดย สพท.',     'ยืนยันข้อมูลถูกต้อง โดย สพป./สพม.', 'shieldCheck'],
+        ], $current);
+    }
+
+    /**
+     * Stepper ประเมินพื้นที่เกาะ (select → eval → print → cert) — 4 ขั้น ไม่มีปักหมุด/วัดความสูง
+     * @param string $current id ของขั้นปัจจุบัน
+     */
+    function nh_island_stepper(string $current): string
+    {
+        return nh_render_stepper([
+            ['select', 'เลือกโรงเรียน',     'สังกัด · โรงเรียน',       'school'],
+            ['eval',   'แบบประเมิน 15 ข้อ',  'กรอก · คิดคะแนน',         'clipboard'],
+            ['print',  'พิมพ์ผล',           'ออกเอกสาร PDF',           'printer'],
+            ['cert',   'รับรองโดย สพท.',     'ยืนยันข้อมูลถูกต้อง โดย สพป./สพม.', 'shieldCheck'],
+        ], $current);
+    }
+
+    /**
+     * Breadcrumb navigator — สร้างอัตโนมัติจาก path ปัจจุบัน
+     * คืน '' สำหรับหน้าแดชบอร์ด/หน้าที่ไม่อยู่ในแผนผัง (จะไม่แสดงแถบนำทาง)
+     *
+     * @param string $curPath path ปัจจุบัน (ไม่มี base path, ไม่มี / นำหน้า) เช่น 'highland/eval'
+     */
+    function nh_breadcrumb(string $curPath): string
+    {
+        // จุดเริ่ม (แดชบอร์ด) ใช้ร่วมทุกสาขา
+        $home = ['แดชบอร์ด', 'dashboard'];
+        // แต่ละ trail = ลำดับ [label, path|null]  (null = ขั้นปัจจุบัน ไม่ลิงก์)
+        $trails = [
+            'highland'       => [$home, ['ประเมินพื้นที่สูง', 'highland'], ['เลือกโรงเรียน', null]],
+            'map'            => [$home, ['ประเมินพื้นที่สูง', 'highland'], ['ปักหมุด · วัดความสูง', null]],
+            'highland/eval'  => [$home, ['ประเมินพื้นที่สูง', 'highland'], ['แบบประเมิน 16 ข้อ', null]],
+            'highland/print' => [$home, ['ประเมินพื้นที่สูง', 'highland'], ['พิมพ์ผล', null]],
+            'highland/cert'  => [$home, ['รออนุมัติ (สพท.)', 'highland/cert'], ['พื้นที่สูง', null]],
+            'island'         => [$home, ['ประเมินพื้นที่เกาะ', 'island'], ['เลือกโรงเรียน', null]],
+            'island/eval'    => [$home, ['ประเมินพื้นที่เกาะ', 'island'], ['แบบประเมิน 15 ข้อ', null]],
+            'island/print'   => [$home, ['ประเมินพื้นที่เกาะ', 'island'], ['พิมพ์ผล', null]],
+            'island/cert'    => [$home, ['รออนุมัติ (สพท.)', 'highland/cert'], ['พื้นที่เกาะ', null]],
+            'confirm'        => [$home, ['รับรองการคงอยู่', null]],
+        ];
+
+        // เลือก trail โดยจับคู่ key ที่ยาว/เฉพาะเจาะจงที่สุดก่อน (longest-prefix)
+        $keys = array_keys($trails);
+        usort($keys, fn ($a, $b) => strlen($b) <=> strlen($a));
+        $trail = null;
+        foreach ($keys as $k) {
+            if ($curPath === $k || str_starts_with($curPath, $k . '/')) {
+                $trail = $trails[$k];
+                break;
+            }
+        }
+        if ($trail === null) {
+            return '';   // dashboard เอง หรือหน้าอื่น — ไม่แสดง breadcrumb
+        }
+
+        $last = count($trail) - 1;
+        $items = '';
+        foreach ($trail as $i => [$label, $path]) {
+            $lbl = htmlspecialchars($label, ENT_QUOTES, 'UTF-8');
+            if ($i === $last || $path === null) {
+                $items .= '<li class="breadcrumb-item active" aria-current="page">' . $lbl . '</li>';
+            } else {
+                $href = htmlspecialchars(App::url($path), ENT_QUOTES);
+                $ico  = $i === 0 ? nh_icon('home', 15) . ' ' : '';
+                $items .= '<li class="breadcrumb-item"><a href="' . $href . '">' . $ico . $lbl . '</a></li>';
+            }
+        }
+        return '<nav class="nh-breadcrumb" aria-label="เส้นทางนำทาง">'
+            . '<ol class="breadcrumb">' . $items . '</ol></nav>';
     }
 
     /** โลโก้แบรนด์: รูป images/logo.png (สเกลตามความสูง รักษาสัดส่วน) */

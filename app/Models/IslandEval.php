@@ -57,6 +57,48 @@ class IslandEval
         if ($data && self::exists($scId, $year)) self::updateRaw($scId, $year, $data);
     }
 
+    /**
+     * รายการประเมินพื้นที่เกาะที่ "เสร็จแล้ว" (มี sum_score) สำหรับให้ สพท./สพฐ. รับรอง — ขั้นที่ 4
+     * JOIN master_school เพื่อกรองตามสังกัด (sao_code) และดึงชื่อ/จังหวัดเป็นทุนสำรอง
+     * @param int|null $saoId null = ทุกเขต (สพฐ.)
+     * @param array    $f     ['q','province','status']
+     */
+    public static function listForCert(?int $saoId, int $year, array $f = []): array
+    {
+        $sql = 'SELECT e.sc_id, e.sc_names, e.sao_names, e.provinces, e.sum_score, e.island_type,
+                       e.confirmstatus, e.confirmcomment, e.spt_commit, e.spt_comment,
+                       m.sc_name, m.provinces AS m_provinces
+                  FROM island_eval e
+             LEFT JOIN master_school m ON m.sc_id = e.sc_id
+                 WHERE e.acadyears = ? AND e.sum_score IS NOT NULL';
+        $p = [$year];
+        if ($saoId !== null)        { $sql .= ' AND m.sao_code = ?'; $p[] = $saoId; }
+        if (!empty($f['province'])) { $sql .= ' AND (e.provinces LIKE ? OR m.provinces LIKE ?)'; $p[] = '%' . $f['province'] . '%'; $p[] = '%' . $f['province'] . '%'; }
+        if (isset($f['status']) && $f['status'] !== '') { $sql .= ' AND COALESCE(e.confirmstatus,0) = ?'; $p[] = (int) $f['status']; }
+        if (!empty($f['q']))        { $sql .= ' AND (e.sc_names LIKE ? OR m.sc_name LIKE ? OR e.sc_id LIKE ?)'; $p[] = '%' . $f['q'] . '%'; $p[] = '%' . $f['q'] . '%'; $p[] = '%' . $f['q'] . '%'; }
+        $sql .= ' ORDER BY COALESCE(e.confirmstatus,0), e.provinces, e.sc_names LIMIT 2000';
+        return Db::all($sql, $p);
+    }
+
+    /** สถิติการ์ดสรุป (รออนุมัติ/รับรองแล้ว/ไม่รับรอง) — เฉพาะที่ประเมินเสร็จ */
+    public static function certStats(?int $saoId, int $year): array
+    {
+        $sql = 'SELECT COUNT(*) total,
+                       SUM(COALESCE(e.confirmstatus,0)=0) pending,
+                       SUM(COALESCE(e.confirmstatus,0)=1) approved,
+                       SUM(COALESCE(e.confirmstatus,0)=2) rejected
+                  FROM island_eval e';
+        $p = [$year];
+        if ($saoId !== null) {
+            $sql .= ' LEFT JOIN master_school m ON m.sc_id = e.sc_id
+                       WHERE e.acadyears = ? AND e.sum_score IS NOT NULL AND m.sao_code = ?';
+            $p[] = $saoId;
+        } else {
+            $sql .= ' WHERE e.acadyears = ? AND e.sum_score IS NOT NULL';
+        }
+        return Db::one($sql, $p) ?? [];
+    }
+
     private static function updateRaw(int $scId, int $year, array $data): void
     {
         $set = implode(', ', array_map(fn($c) => "`$c` = ?", array_keys($data)));

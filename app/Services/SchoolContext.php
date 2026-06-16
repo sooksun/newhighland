@@ -19,12 +19,16 @@ class SchoolContext
         $master = MasterSchool::find((string) $scId);
         $eval   = HighlandEval::find($scId, $year);
 
-        $scName   = $master['sc_name']   ?? ($eval['sc_names'] ?? '');
-        $province = $master['provinces'] ?? ($eval['provinces'] ?? '');
+        $scName = $master['sc_name'] ?? ($eval['sc_names'] ?? '');
+        // จังหวัด: ใช้ school_new เป็นหลัก (master_school.provinces ว่างในหลายแถว) ผ่าน MasterSchool::provinceOf
+        $province = MasterSchool::provinceOf((string) $scId);
+        if ($province === '') {
+            $province = (string) ($master['provinces'] ?? ($eval['provinces'] ?? ''));
+        }
 
         $prov = $province !== '' ? Province::byName($province) : null;
 
-        // พิกัดที่ปักหมุดไว้แล้ว (จาก school_location หรือจาก eval เดิม)
+        // พิกัดที่ปักหมุดไว้แล้ว (จาก school_location เป็นหลัก หรือจาก eval เดิม)
         $loc = Db::one('SELECT lat, lng, location_high FROM school_location WHERE id = ? LIMIT 1', [$scId]);
 
         $scLat = $loc['lat'] ?? ($eval['lat'] ?? '');

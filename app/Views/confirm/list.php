@@ -7,10 +7,14 @@ $isAdmin = Auth::isAdmin();
   <span class="badge badge-primary"><?= nh_icon('shieldCheck', 13) ?> รับรองการคงอยู่</span>
   <span class="badge badge-neutral"><?= nh_icon('calendar', 12) ?> ปีงบประมาณ <?= View::e(App::acadYear()) ?></span>
 </div>
+<?php $listAreas = \App\Services\SchoolMenu::current()['areas'] ?: [1, 2]; ?>
+<?php if (count($listAreas) > 1): ?>
 <ul class="nav nav-pills mb-3">
-  <li class="nav-item"><a class="nav-link <?= $area===1?'active':'' ?>" href="<?= App::url('confirm?area=1') ?>">พื้นที่สูง</a></li>
-  <li class="nav-item"><a class="nav-link <?= $area===2?'active':'' ?>" href="<?= App::url('confirm?area=2') ?>">พื้นที่เกาะ</a></li>
+  <?php foreach ([1=>'พื้นที่สูง', 2=>'พื้นที่เกาะ'] as $av => $al): if (in_array($av, $listAreas, true)): ?>
+    <li class="nav-item"><a class="nav-link <?= $area===$av?'active':'' ?>" href="<?= App::url('confirm?area='.$av) ?>"><?= $al ?></a></li>
+  <?php endif; endforeach; ?>
 </ul>
+<?php endif; ?>
 
 <h1 class="h5 fw-bold mb-1">รับรองการคงอยู่ — <?= View::e(SchoolConfirm::areaLabel($area)) ?></h1>
 <p class="text-muted small">ปีงบประมาณ <?= View::e(App::acadYear()) ?><?= $isAdmin ? ' · ทุกเขต' : ' · '.View::e(Auth::saoName()) ?></p>
@@ -56,6 +60,16 @@ $isAdmin = Auth::isAdmin();
       <td>
         <?php if ($r['school_confirmed']): ?>
           <span class="badge bg-<?= $r['opened']?'info':'danger' ?>"><?= $r['opened']?'คงอยู่':'ยุบ/รวม/เลิก' ?></span>
+          <?php if (SchoolConfirm::isLocked($r)): ?>
+            <span class="badge bg-secondary">🔒 ส่งแล้ว</span>
+            <form method="post" action="<?= App::url('confirm/unlock') ?>" class="d-inline"
+                  onsubmit="return confirm('ปลดล็อกให้โรงเรียนกลับมาแก้ไขข้อมูลใหม่?');">
+              <?= Csrf::field() ?><input type="hidden" name="id" value="<?= $r['id'] ?>"><input type="hidden" name="area" value="<?= $area ?>">
+              <button class="btn btn-sm btn-outline-warning py-0 px-1"><?= nh_icon('edit', 13) ?> ปลดล็อก</button>
+            </form>
+          <?php else: ?>
+            <span class="badge bg-warning text-dark">ร่าง</span>
+          <?php endif; ?>
         <?php else: ?><span class="badge bg-light text-muted">ยังไม่ยืนยัน</span><?php endif; ?>
       </td>
       <td>

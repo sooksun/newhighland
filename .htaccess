@@ -2,10 +2,21 @@
 Options -Indexes
 
 # ปิดกั้นการเข้าถึงโฟลเดอร์/ไฟล์ภายในจากเว็บโดยตรง
+# ใช้ RedirectMatch (ทำงานช่วง translate ก่อน auth) เพื่อให้กันได้เสมอ แม้ผู้ใช้ผ่าน Basic Auth แล้ว
 RedirectMatch 403 ^/?(app|config|database|docs|docsref)(/|$)
-<FilesMatch "\.(md|sql|json|lock|txt|xlsx)$">
-    Require all denied
-</FilesMatch>
+RedirectMatch 403 (?:^|/)\.ht
+RedirectMatch 403 \.(md|sql|json|lock|txt|xlsx)$
+
+# รหัสผ่านกั้นหน้า (Basic Auth) — เฉพาะคำขอที่เข้าผ่าน Cloudflare tunnel (มี header CF-Ray)
+# การเข้าจากเครื่อง dev ในเครื่อง (ไม่มี CF-Ray) จะไม่ถูกกั้น
+<IfModule mod_auth_basic.c>
+  <If "-n %{HTTP:CF-Ray}">
+    AuthType Basic
+    AuthName "Highland - tester access only"
+    AuthUserFile "D:/laragon/www/newhighland/.htpasswd"
+    Require valid-user
+  </If>
+</IfModule>
 
 <IfModule mod_rewrite.c>
     RewriteEngine On

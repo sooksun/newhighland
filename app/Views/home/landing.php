@@ -15,6 +15,13 @@ $flow = [
   ['clipboard','แบบประเมิน 16 ข้อ','กรอกข้อมูล 11 หมวด'],
   ['award','คิดคะแนน','รวมคะแนน + จัดระดับ'],
   ['printer','พิมพ์ผล','ออกเอกสาร PDF'],
+  ['shieldCheck','รับรองโดย สพท.','ยืนยันข้อมูลถูกต้อง โดย สพป./สพม.'],
+];
+$flowIsland = [
+  ['school','เลือกโรงเรียน','สังกัด · โรงเรียนพื้นที่เกาะ'],
+  ['clipboard','แบบประเมิน 15 ข้อ','กรอกข้อมูล · คิดคะแนน (เต็ม 100)'],
+  ['printer','พิมพ์ผล','ออกเอกสาร PDF'],
+  ['shieldCheck','รับรองโดย สพท.','ยืนยันข้อมูลถูกต้อง โดย สพป./สพม.'],
 ];
 $accentBg = fn($cls) => $cls === 'island'
   ? 'background:var(--island-050);color:var(--island-700);'
@@ -83,10 +90,14 @@ $accentBg = fn($cls) => $cls === 'island'
 <!-- PROGRAM / processes -->
 <section class="section" id="program" style="background:var(--surface);">
   <div class="container">
-    <div class="section-head">
-      <div class="eyebrow">ขอบเขตของระบบ</div>
-      <h2>4 กระบวนการสำหรับปีงบประมาณ <?= View::e($acad) ?></h2>
-      <p>รองรับทั้งการประเมินโรงเรียนที่ตกหล่นแบบเต็มกระบวนการ และการยืนยันการคงอยู่ของโรงเรียนที่เป็นพื้นที่พิเศษอยู่แล้ว</p>
+    <div class="prog-head-row" style="margin-bottom:var(--s-6);">
+      <img src="<?= App::asset('img/student-south-purple.png') ?>" alt="นักเรียนโรงเรียนพื้นที่ภาคใต้" class="student-cut prog-student" style="width:230px;">
+      <div class="section-head grow" style="margin:0;">
+        <div class="eyebrow">ขอบเขตของระบบ</div>
+        <h2>4 กระบวนการสำหรับปีงบประมาณ <?= View::e($acad) ?></h2>
+        <p>รองรับทั้งการประเมินโรงเรียนที่ตกหล่นแบบเต็มกระบวนการ และการยืนยันการคงอยู่ของโรงเรียนที่เป็นพื้นที่พิเศษอยู่แล้ว</p>
+      </div>
+      <img src="<?= App::asset('img/student-hill-girl.png') ?>" alt="นักเรียนชาวเขา" class="student-cut prog-student" style="width:215px;">
     </div>
     <div class="proc-grid">
       <?php foreach ($procs as [$n,$ic,$cls,$t,$d,$tag,$tagcls]): ?>
@@ -110,8 +121,8 @@ $accentBg = fn($cls) => $cls === 'island'
 <section class="section" id="flow">
   <div class="container">
     <div class="section-head">
-      <div class="eyebrow">ขั้นตอนการประเมิน</div>
-      <h2>จากการปักหมุด สู่ผลการคัดกรอง</h2>
+      <div class="eyebrow"><?= nh_icon('mountain', 14) ?> ขั้นตอนการประเมินพื้นที่สูง</div>
+      <h2>ประเมินโรงเรียนพื้นที่สูงในถิ่นทุรกันดาร มี 6 ขั้นตอน</h2>
       <p>กระบวนการประเมินพื้นที่สูงแบบเต็มรูปแบบ ทำได้ครบจบในระบบเดียว</p>
     </div>
     <div class="card card-pad">
@@ -126,11 +137,39 @@ $accentBg = fn($cls) => $cls === 'island'
       </div>
     </div>
 
+    <!-- FLOW: พื้นที่เกาะ -->
+    <div class="section-head mt-5">
+      <div class="eyebrow"><?= nh_icon('waves', 14) ?> ขั้นตอนการประเมินพื้นที่เกาะ</div>
+      <h2>ประเมินโรงเรียนพื้นที่เกาะ ครบใน 4 ขั้นตอน</h2>
+      <p>ใช้เกณฑ์เฉพาะของพื้นที่เกาะ ไม่ต้องปักหมุด/วัดความสูง — เลือกโรงเรียนแล้วกรอกแบบประเมินได้ทันที</p>
+    </div>
+    <div class="card card-pad">
+      <div class="flow-steps">
+        <?php foreach ($flowIsland as [$ic,$t,$d]): ?>
+          <div class="flow-step">
+            <div class="fs-n" style="background:var(--island-050);color:var(--island-700);"><?= nh_icon($ic, 22) ?></div>
+            <h4><?= View::e($t) ?></h4>
+            <p><?= View::e($d) ?></p>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+
+    <!-- ภาพนักเรียนในพื้นที่ลักษณะพิเศษ -->
+    <div class="card mt-5" style="padding:0;overflow:hidden;border-radius:var(--r-xl);position:relative;">
+      <img src="<?= App::asset('img/students-south-group.png') ?>" alt="นักเรียนในโรงเรียนพื้นที่ลักษณะพิเศษ"
+           style="width:100%;height:clamp(220px,30vw,360px);object-fit:cover;object-position:center 28%;display:block;">
+      <div style="position:absolute;left:0;right:0;bottom:0;padding:var(--s-6) var(--s-5) var(--s-5);background:linear-gradient(to top,rgba(13,27,62,.82),rgba(13,27,62,.15) 70%,transparent);color:#fff;">
+        <b style="font-family:var(--font-head);font-size:var(--fs-h3);display:block;">เพื่อเด็กทุกคนในพื้นที่ลักษณะพิเศษ</b>
+        <div style="color:#dbe4f5;font-size:.9rem;margin-top:2px;">ทั้งบนภูเขาสูงในถิ่นทุรกันดาร และบนเกาะห่างไกล ทั่วประเทศ</div>
+      </div>
+    </div>
+
     <!-- criteria highlight + roles -->
     <div class="proc-grid mt-5">
       <div class="card card-pad">
         <div class="eyebrow" style="color:var(--highland-700);">เกณฑ์การตัดสิน</div>
-        <h3 class="mt-2">คะแนนรวม &ge; 50 = โรงเรียนพื้นที่สูงในถิ่นทุรกันดาร</h3>
+        <h3 class="mt-2">คะแนนรวม &ge; 50 = โรงเรียนพื้นที่ลักษณะพิเศษ</h3>
         <div class="stack gap-2 mt-4">
           <?php foreach ([['50–59','ยุ่งยาก','badge-info'],['60–69','ยุ่งยากมาก','badge-warning'],['70 ขึ้นไป','ยุ่งยากมากที่สุด','badge-danger']] as $i => [$r,$l,$c]): ?>
             <div class="nh-row between" style="padding:8px 0;<?= $i < 2 ? 'border-bottom:1px solid var(--border);' : '' ?>">
@@ -166,7 +205,7 @@ $accentBg = fn($cls) => $cls === 'island'
   <div class="container">
     <div class="card cta-band" style="background:radial-gradient(120% 160% at 50% -20%,var(--brand-primary-050),var(--surface));padding:var(--s-7) var(--s-6) 0;">
       <div class="nh-row between" style="align-items:flex-end;gap:var(--s-4);">
-        <img src="<?= App::asset('img/student-pair.png') ?>" alt="นักเรียนชาวเขา" class="student-cut cta-student">
+        <img src="<?= App::asset('img/student-south-purple.png') ?>" alt="นักเรียนโรงเรียนพื้นที่ภาคใต้" class="student-cut cta-student" style="width:330px;margin-bottom:-10px;">
         <div class="text-c grow" style="padding-bottom:var(--s-7);">
           <?= nh_brand_mark(56) ?>
           <h2 class="mt-4">พร้อมเริ่มการประเมินแล้วหรือยัง</h2>
@@ -175,7 +214,7 @@ $accentBg = fn($cls) => $cls === 'island'
           </p>
           <a href="<?= $loginUrl ?>" class="btn btn-primary btn-lg mt-5"><?= nh_icon('login', 20) ?> เข้าสู่ระบบ</a>
         </div>
-        <img src="<?= App::asset('img/student-sitting.png') ?>" alt="นักเรียนชาวเขา" class="student-cut cta-student">
+        <img src="<?= App::asset('img/student-south-blue.png') ?>" alt="นักเรียนโรงเรียนพื้นที่ภาคใต้" class="student-cut cta-student" style="width:330px;margin-bottom:-10px;">
       </div>
     </div>
   </div>

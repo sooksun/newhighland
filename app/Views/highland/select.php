@@ -14,6 +14,12 @@
         <?= Csrf::field() ?>
 
         <?php if ($mode === 'school'): ?>
+          <?php if (!empty($in_roster)): ?>
+            <div class="alert alert-info d-flex align-items-start gap-2 mb-0">
+              <?= nh_icon('info', 20) ?>
+              <div>โรงเรียนนี้เป็น<b>พื้นที่สูงเดิม</b> (ผ่านการประเมินแล้ว) จึงไม่ต้องประเมินใหม่ — เพียง<b>ยืนยันการคงอยู่</b>เท่านั้น</div>
+            </div>
+          <?php endif; ?>
           <div class="field">
             <label class="label">สังกัด</label>
             <input type="text" class="form-control" value="<?= View::e($sao_name) ?>" readonly>
@@ -44,12 +50,17 @@
             <select id="school" name="sc_id" class="form-select" required>
               <option value="">— เลือกสังกัดก่อน —</option>
             </select>
+            <div class="muted" style="font-size:var(--fs-xs);margin-top:6px;"><?= nh_icon('info', 12) ?> แสดงเฉพาะโรงเรียนในจังหวัดที่เคยมีโรงเรียนพื้นที่สูง (กรองเบื้องต้นตามเกณฑ์)</div>
           </div>
         <?php endif; ?>
 
         <div class="nh-row between gap-3 mt-2">
           <a href="<?= App::url('dashboard') ?>" class="btn btn-ghost"><?= nh_icon('chevLeft', 18) ?> ยกเลิก</a>
-          <button type="submit" class="btn btn-primary btn-lg">ถัดไป: ปักหมุดตำแหน่ง <?= nh_icon('arrowRight', 18) ?></button>
+          <?php if ($mode === 'school' && !empty($in_roster)): ?>
+            <a href="<?= App::url('confirm?area=1') ?>" class="btn btn-primary btn-lg"><?= nh_icon('shieldCheck', 18) ?> ไปยืนยันการคงอยู่</a>
+          <?php else: ?>
+            <button type="submit" class="btn btn-primary btn-lg">ถัดไป: ปักหมุดตำแหน่ง <?= nh_icon('arrowRight', 18) ?></button>
+          <?php endif; ?>
         </div>
       </form>
     </div>
@@ -99,7 +110,12 @@
       (data || []).forEach(s => {
         const o = document.createElement('option');
         o.value = s.sc_id;
-        o.textContent = s.sc_name + ' (' + s.sc_id + ')';
+        if (s.in_roster) {
+          o.disabled = true;
+          o.textContent = s.sc_name + ' (' + s.sc_id + ') — ผ่านประเมินแล้ว / รับรองการคงอยู่';
+        } else {
+          o.textContent = s.sc_name + ' (' + s.sc_id + ')';
+        }
         schoolSel.appendChild(o);
       });
     } catch (e) {

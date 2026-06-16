@@ -15,3 +15,16 @@ desktop.ini
 
 # local render artifacts
 /_*.html
+
+# runtime storage (rate-limit throttle ฯลฯ) — เก็บโครงสร้างโฟลเดอร์ ไม่เก็บไฟล์ runtime
+/storage/throttle/*
+!/storage/throttle/.gitkeep
+
+# basic-auth credential file สำหรับกั้นหน้า tester (ไม่ commit รหัส)
+/.htpasswd
+
+# คู่มือ: โฟลเดอร์ทำงาน (node_modules/สคริปต์/ภาพ)
+/_manual/
+
+# DB dump เต็ม (ใหญ่เกินลิมิต GitHub) — เก็บไว้ในเครื่องเท่านั้น
+/docs/ssrainfo_ssra.sql

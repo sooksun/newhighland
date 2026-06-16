@@ -16,7 +16,7 @@ return [
         'pass'    => '',            // Laragon default root has no password locally
         'charset' => 'utf8mb4',
     ],
-
+    
     // ---- ปีการศึกษา/ปีงบประมาณที่ใช้เป็นคีย์ acadyears ----
     // TODO (PRD §13.1): ยืนยันค่า acadyears ของรอบปี 2569 กับผู้เกี่ยวข้อง
     // ระบบเดิมใช้ 2567; ตั้ง default ไว้ที่ 2569 และเปลี่ยนได้ที่นี่ที่เดียว

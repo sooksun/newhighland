@@ -27,6 +27,8 @@ class Auth
         );
         if ($u) {
             $sao = $u['sao_id'] ? \App\Models\MasterSao::find((int) $u['sao_id']) : null;
+            // auto menu filter: คำนวณเมนูที่ตรงคุณสมบัติของโรงเรียน เก็บไว้ใน session
+            $menu = \App\Services\SchoolMenu::forSchool((int) $u['sc_id'], App::acadYear());
             $_SESSION['auth'] = [
                 'role'        => self::ROLE_SCHOOL,
                 'username'    => $username,
@@ -36,6 +38,8 @@ class Auth
                 'sao_name'    => $sao['sao_name'] ?? '',
                 'sao_code'    => null,
                 'login_table' => 'user',
+                'menus'       => $menu['nav'],
+                'confirm_areas' => $menu['areas'],
             ];
             session_regenerate_id(true);
             return true;
@@ -62,6 +66,12 @@ class Auth
                 'sao_code'    => $s['id'],         // รหัสเขต เช่น '63020000'
                 'login_table' => 'master_saonew',
             ];
+            // auto menu filter: เขต (ไม่ใช่ สพฐ.) เห็นเฉพาะพื้นที่ที่ตนดูแล
+            if (!$isAdmin && !empty($sao['sao_id'])) {
+                $menu = \App\Services\SchoolMenu::forSao((int) $sao['sao_id'], App::acadYear());
+                $_SESSION['auth']['menus']         = $menu['nav'];
+                $_SESSION['auth']['confirm_areas'] = $menu['areas'];
+            }
             session_regenerate_id(true);
             return true;
         }
@@ -77,6 +87,10 @@ class Auth
     public static function saoId(): ?int         { return $_SESSION['auth']['sao_id'] ?? null; }
     public static function saoName(): string     { return $_SESSION['auth']['sao_name'] ?? ''; }
     public static function saoCode(): ?string   { return $_SESSION['auth']['sao_code'] ?? null; }
+    /** เมนูที่อนุญาตของโรงเรียน (auto menu filter) — null ถ้ายังไม่ได้คำนวณ */
+    public static function menus(): ?array        { return $_SESSION['auth']['menus'] ?? null; }
+    /** พื้นที่รับรองการคงอยู่ที่อนุญาต (1=สูง, 2=เกาะ) — null ถ้ายังไม่ได้คำนวณ */
+    public static function confirmAreas(): ?array { return $_SESSION['auth']['confirm_areas'] ?? null; }
 
     public static function isSchool(): bool { return self::role() === self::ROLE_SCHOOL; }
     public static function isSao(): bool    { return self::role() === self::ROLE_SAO; }

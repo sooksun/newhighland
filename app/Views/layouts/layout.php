@@ -14,10 +14,30 @@ $initial  = function_exists('mb_substr') ? mb_substr($userName !== '' ? $userNam
 $curPath = trim(str_replace(App::basePath(), '', parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? ''), '/');
 $seg = explode('/', $curPath)[0] ?? '';
 $navLinks = [
-  ['dashboard', 'แดชบอร์ด',          'dashboard',   ['', 'dashboard']],
-  ['highland',  'ประเมินพื้นที่สูง',   'mountain',     ['highland', 'map', 'island']],
-  ['confirm',   'รับรองการคงอยู่',    'shieldCheck',  ['confirm']],
+  ['dashboard', 'แดชบอร์ด',          'dashboard',  ['', 'dashboard']],
+  ['highland',  'ประเมินพื้นที่สูง',   'mountain',    ['highland', 'map']],
+  ['island',    'ประเมินพื้นที่เกาะ',  'waves',       ['island']],
 ];
+// ขั้นรับรอง (รออนุมัติ) — เฉพาะ สพท./สพฐ.; เขตชี้ไปพื้นที่ที่ตนดูแล, สพฐ. ครอบคลุมทั้งสองพื้นที่
+if (in_array($role, ['sao', 'admin'], true)) {
+  $certPath = $role === 'sao' ? \App\Services\SchoolMenu::current()['cert'] : 'highland/cert';
+  $navLinks[] = [$certPath, 'รออนุมัติ (สพท.)', 'shieldCheck', ['highland/cert', 'island/cert']];
+}
+$navLinks[] = ['confirm', 'รับรองการคงอยู่', 'shieldCheck', ['confirm']];
+
+// auto menu filter: โรงเรียน/เขต เห็นเฉพาะเมนูที่ตรงคุณสมบัติ (กันลงข้อมูลผิดประเภท); สพฐ. เห็นครบ
+if (in_array($role, ['school', 'sao'], true)) {
+  $allowedNav = \App\Services\SchoolMenu::current()['nav'];
+  $navLinks = array_values(array_filter($navLinks, fn($l) => in_array($l[0], $allowedNav, true)));
+}
+
+// หน้ารับรอง (cert) ต้อง active ที่เมนู "รออนุมัติ" เท่านั้น ไม่ใช่เมนูประเมิน
+$onCert = str_starts_with($curPath, 'highland/cert') || str_starts_with($curPath, 'island/cert');
+$navIsActive = function (string $path, array $matches) use ($curPath, $seg, $onCert): bool {
+  if ($path === 'highland/cert' || $path === 'island/cert') return $onCert;   // เมนูรออนุมัติ
+  if ($onCert) return false;                        // อยู่หน้า cert: เมนูอื่นไม่ active
+  return in_array($seg, $matches, true);
+};
 ?>
 <!DOCTYPE html>
 <html lang="th">
@@ -44,7 +64,7 @@ $navLinks = [
     </a>
 
     <nav class="nav-links nav-desktop" aria-label="เมนูหลัก">
-      <?php foreach ($navLinks as [$path, $label, $icon, $matches]): $active = in_array($seg, $matches, true) ? ' active' : ''; ?>
+      <?php foreach ($navLinks as [$path, $label, $icon, $matches]): $active = $navIsActive($path, $matches) ? ' active' : ''; ?>
         <a class="nh-nav-link<?= $active ?>" href="<?= App::url($path) ?>"><?= nh_icon($icon, 17) ?> <?= View::e($label) ?></a>
       <?php endforeach; ?>
     </nav>
@@ -62,7 +82,7 @@ $navLinks = [
   </div>
   <div class="container nav-collapse" id="navCollapse">
     <div class="stack gap-1" style="padding:8px 0 12px;">
-      <?php foreach ($navLinks as [$path, $label, $icon, $matches]): $active = in_array($seg, $matches, true) ? ' active' : ''; ?>
+      <?php foreach ($navLinks as [$path, $label, $icon, $matches]): $active = $navIsActive($path, $matches) ? ' active' : ''; ?>
         <a class="nh-nav-link<?= $active ?>" href="<?= App::url($path) ?>"><?= nh_icon($icon, 17) ?> <?= View::e($label) ?></a>
       <?php endforeach; ?>
       <a class="nh-nav-link" href="<?= App::url('auth/logout') ?>"><?= nh_icon('logout', 17) ?> ออกจากระบบ</a>
@@ -71,6 +91,9 @@ $navLinks = [
 </header>
 
 <main class="page">
+  <?php if ($bc = nh_breadcrumb($curPath)): ?>
+  <div class="container"><?= $bc ?></div>
+  <?php endif; ?>
   <div class="container">
     <?php foreach (Flash::pull() as $f): $type = View::e($f['type']); ?>
       <div class="alert alert-<?= $type ?> alert-dismissible fade show d-flex align-items-start gap-2" role="alert">
@@ -134,6 +157,25 @@ $navLinks = [
   // ---- เมนูมือถือ ----
   var nt = document.getElementById('navToggle'), nc = document.getElementById('navCollapse');
   if (nt && nc) nt.addEventListener('click', function () { nc.classList.toggle('open'); });
+
+  // ---- กันกดปุ่ม "บันทึก/ส่งข้อมูล" ซ้ำ (double submit) ----
+  // ทำงานใน bubble phase: ถ้าฟอร์มยกเลิกการส่งเอง (validation/JS) จะข้าม
+  // และใช้ setTimeout(0) เพื่อให้เบราว์เซอร์เก็บค่าปุ่มที่กด (name/value) ก่อนค่อยล็อกปุ่ม
+  document.addEventListener('submit', function (e) {
+    if (e.defaultPrevented) return;
+    var form = e.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    setTimeout(function () {
+      form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach(function (btn) {
+        btn.disabled = true;
+        btn.classList.add('disabled');
+        if (btn.tagName === 'BUTTON' && !btn.dataset.label) {
+          btn.dataset.label = btn.innerHTML;
+          btn.innerHTML = 'กำลังบันทึก…';
+        }
+      });
+    }, 0);
+  }, false);
 })();
 </script>
 </body>

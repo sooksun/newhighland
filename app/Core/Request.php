@@ -53,4 +53,16 @@ class Request
     {
         return strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'xmlhttprequest';
     }
+
+    /**
+     * client IP — เมื่อมาผ่าน Cloudflare (มี CF-Ray) ใช้ CF-Connecting-IP
+     * ไม่งั้นใช้ REMOTE_ADDR (ไม่เชื่อ header ที่ปลอมได้เมื่อไม่ได้ผ่าน Cloudflare)
+     */
+    public static function ip(): string
+    {
+        if (!empty($_SERVER['HTTP_CF_RAY']) && !empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+            return (string) $_SERVER['HTTP_CF_CONNECTING_IP'];
+        }
+        return (string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+    }
 }

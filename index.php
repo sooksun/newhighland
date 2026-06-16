@@ -14,8 +14,10 @@ use App\Controllers\HomeController;
 use App\Controllers\SchoolController;
 use App\Controllers\MapController;
 use App\Controllers\HighlandEvalController;
+use App\Controllers\HighlandCertController;
 use App\Controllers\ConfirmController;
 use App\Controllers\IslandEvalController;
+use App\Controllers\IslandCertController;
 
 $router = new Router();
 
@@ -46,12 +48,17 @@ $router->post('highland/hilltrib/delete',[HighlandEvalController::class, 'delete
 $router->post('highland/eval/cert',     [HighlandEvalController::class, 'cert']);          // AJAX (สพท./สพฐ.)
 // 1E พิมพ์
 $router->get('highland/print',     [HighlandEvalController::class, 'print']);
+// 1F ขั้นที่ 5: รายการรออนุมัติ — สพท./สพฐ. รับรองผลประเมิน
+$router->get('highland/cert',      [HighlandCertController::class, 'index']);
+$router->post('highland/cert/sao', [HighlandCertController::class, 'sao']);
+$router->post('highland/cert/spt', [HighlandCertController::class, 'spt']);
 
 // ---- ส่วนที่ 3 + 4: รับรองการคงอยู่ (พื้นที่สูง/เกาะ) ----
 $router->get('confirm',         [ConfirmController::class, 'index']);
 $router->post('confirm/school', [ConfirmController::class, 'school']);
 $router->post('confirm/sao',    [ConfirmController::class, 'sao']);
 $router->post('confirm/spt',    [ConfirmController::class, 'spt']);
+$router->post('confirm/unlock', [ConfirmController::class, 'unlock']);
 
 // ---- ส่วนที่ 2: ประเมินพื้นที่เกาะใหม่ ----
 $router->get('island',            [IslandEvalController::class, 'select']);
@@ -60,5 +67,9 @@ $router->get('island/eval',       [IslandEvalController::class, 'edit']);
 $router->post('island/eval/save', [IslandEvalController::class, 'save']);
 $router->post('island/eval/cert', [IslandEvalController::class, 'cert']);
 $router->get('island/print',      [IslandEvalController::class, 'print']);
+// ขั้นที่ 4: รายการรออนุมัติ — สพท./สพฐ. รับรองผลประเมินพื้นที่เกาะ
+$router->get('island/cert',       [IslandCertController::class, 'index']);
+$router->post('island/cert/sao',  [IslandCertController::class, 'sao']);
+$router->post('island/cert/spt',  [IslandCertController::class, 'spt']);
 
 $router->dispatch(Request::method(), Request::path());

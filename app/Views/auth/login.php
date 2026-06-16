@@ -18,7 +18,7 @@
       </div>
     </div>
     <div class="auth-art-foot">
-      <div class="scene" style="max-width:260px;flex:1;aspect-ratio:4/3;">
+      <div class="scene" style="max-width:360px;flex:1;aspect-ratio:4/3;">
         <img src="<?= App::asset('img/scene-banner.png') ?>" alt="โรงเรียนในพื้นที่ลักษณะพิเศษ">
       </div>
       <img src="<?= App::asset('img/student-akha.png') ?>" alt="นักเรียนชาวเขา" class="student-cut auth-student">

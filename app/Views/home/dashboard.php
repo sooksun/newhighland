@@ -9,13 +9,25 @@ $roleMeta = [
 ];
 $rm = $roleMeta[$role] ?? $roleMeta['school'];
 
-// การ์ดกระบวนการ 4 ส่วน (accent ตามประเภทพื้นที่)
+// การ์ดกระบวนการ 4 ส่วน (accent ตามประเภทพื้นที่) — nav/area ใช้กรองตาม auto menu filter
 $tasks = [
-  ['accent'=>'highland','icon'=>'mountain',   't'=>'ประเมินพื้นที่สูงใหม่',        'badge'=>'พร้อมใช้งาน','badgeCls'=>'badge-success','d'=>'คัดกรองโรงเรียนพื้นที่ภูเขาสูงในถิ่นทุรกันดาร เต็มกระบวนการ','meta'=>'ปักหมุด → วัดความสูง → 16 ข้อ → พิมพ์','url'=>App::url('highland'),'action'=>'เริ่ม'],
-  ['accent'=>'island',  'icon'=>'waves',      't'=>'ประเมินพื้นที่เกาะใหม่',       'badge'=>'พร้อมใช้งาน','badgeCls'=>'badge-success','d'=>'คัดกรองโรงเรียนพื้นที่เกาะตามเกณฑ์เฉพาะ','meta'=>'แบบประเมิน 15 ข้อ (เกาะ)','url'=>App::url('island'),'action'=>'เริ่ม'],
-  ['accent'=>'highland','icon'=>'shieldCheck','t'=>'รับรองการคงอยู่ — พื้นที่สูง','badge'=>'พร้อมใช้งาน','badgeCls'=>'badge-success','d'=>'ยืนยันสถานะ (ไม่ยุบ / ไม่เลิก / ไม่รวม) และรับรองโดยสำนักงานเขต','meta'=>'รายชื่ออ้างอิงปี 2566','url'=>App::url('confirm?area=1'),'action'=>'เปิดรายการ'],
-  ['accent'=>'island',  'icon'=>'shieldCheck','t'=>'รับรองการคงอยู่ — พื้นที่เกาะ','badge'=>'พร้อมใช้งาน','badgeCls'=>'badge-success','d'=>'ยืนยันการคงอยู่ของโรงเรียนพื้นที่เกาะ พร้อมการรับรอง','meta'=>'รายชื่ออ้างอิงปี 2566','url'=>App::url('confirm?area=2'),'action'=>'เปิดรายการ'],
+  ['nav'=>'highland','area'=>0,'accent'=>'highland','icon'=>'mountain',   't'=>'ประเมินพื้นที่สูงใหม่',        'badge'=>'พร้อมใช้งาน','badgeCls'=>'badge-success','d'=>'คัดกรองโรงเรียนพื้นที่ภูเขาสูงในถิ่นทุรกันดาร เต็มกระบวนการ','meta'=>'ปักหมุด → วัดความสูง → 16 ข้อ → พิมพ์','url'=>App::url('highland'),'action'=>'เริ่ม'],
+  ['nav'=>'island','area'=>0,'accent'=>'island',  'icon'=>'waves',      't'=>'ประเมินพื้นที่เกาะใหม่',       'badge'=>'พร้อมใช้งาน','badgeCls'=>'badge-success','d'=>'คัดกรองโรงเรียนพื้นที่เกาะตามเกณฑ์เฉพาะ','meta'=>'แบบประเมิน 15 ข้อ (เกาะ)','url'=>App::url('island'),'action'=>'เริ่ม'],
+  ['nav'=>'confirm','area'=>1,'accent'=>'highland','icon'=>'shieldCheck','t'=>'รับรองการคงอยู่ — พื้นที่สูง','badge'=>'พร้อมใช้งาน','badgeCls'=>'badge-success','d'=>'ยืนยันสถานะ (ไม่ยุบ / ไม่เลิก / ไม่รวม) และรับรองโดยสำนักงานเขต','meta'=>'รายชื่ออ้างอิงปี 2566','url'=>App::url('confirm?area=1'),'action'=>'เปิดรายการ'],
+  ['nav'=>'confirm','area'=>2,'accent'=>'island',  'icon'=>'shieldCheck','t'=>'รับรองการคงอยู่ — พื้นที่เกาะ','badge'=>'พร้อมใช้งาน','badgeCls'=>'badge-success','d'=>'ยืนยันการคงอยู่ของโรงเรียนพื้นที่เกาะ พร้อมการรับรอง','meta'=>'รายชื่ออ้างอิงปี 2566','url'=>App::url('confirm?area=2'),'action'=>'เปิดรายการ'],
 ];
+
+// auto menu filter: โรงเรียน/เขต เห็นเฉพาะกระบวนการที่ตรงคุณสมบัติ; สพฐ. เห็นครบ
+$primaryUrl = null;
+if (in_array($role, ['school', 'sao'], true)) {
+  $m = \App\Services\SchoolMenu::current();
+  $tasks = array_values(array_filter($tasks, function ($t) use ($m) {
+    if (!in_array($t['nav'], $m['nav'], true)) return false;
+    if ($t['nav'] === 'confirm' && !in_array($t['area'], $m['areas'], true)) return false;
+    return true;
+  }));
+  if ($role === 'school') $primaryUrl = $tasks[0]['url'] ?? null;   // ปุ่มลัดเฉพาะโรงเรียน
+}
 
 $tones = [
   'primary' => 'background:var(--brand-primary-050);color:var(--brand-primary-700);',
@@ -34,8 +46,8 @@ $tones = [
       <h1 class="mt-2"><?= View::e($rm['greet']) ?> · <?= View::e(Auth::name()) ?></h1>
       <p class="sub">เลือกกระบวนการที่ต้องการดำเนินการ หรือดูภาพรวมสถานะการประเมิน</p>
     </div>
-    <?php if ($role === 'school'): ?>
-      <a href="<?= App::url('highland') ?>" class="btn btn-primary"><?= nh_icon('mountain', 18) ?> เริ่มประเมินพื้นที่สูง</a>
+    <?php if ($role === 'school' && $primaryUrl): $pt = $tasks[0]; ?>
+      <a href="<?= View::e($primaryUrl) ?>" class="btn btn-primary"><?= nh_icon($pt['icon'], 18) ?> <?= View::e($pt['t']) ?></a>
     <?php endif; ?>
   </div>
 
@@ -61,6 +73,9 @@ $tones = [
   <div class="nh-row between" style="margin-bottom:var(--s-4);">
     <h2 style="font-size:var(--fs-h3);">กระบวนการ</h2>
   </div>
+  <?php if (in_array($role, ['school','sao'], true) && !$tasks): ?>
+    <div class="alert alert-info">ยังไม่พบกระบวนการที่ตรงกับคุณสมบัติของท่านในปีงบประมาณนี้ — หากคิดว่าไม่ถูกต้อง โปรดติดต่อผู้ดูแลระบบ</div>
+  <?php endif; ?>
   <div class="proc-grid anim-up">
     <?php foreach ($tasks as $t):
       $isIsland = $t['accent'] === 'island';
