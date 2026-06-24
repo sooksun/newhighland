@@ -217,7 +217,7 @@ class DashboardStat
         $c = self::cfg($area);
         [$rs, $rp] = self::scope($saoId);
         $sql = "SELECT m.sao_code,
-                       COALESCE(NULLIF(ms.sao_name,''), CONCAT('เขต ', m.sao_code)) sao_name,
+                       COALESCE(NULLIF(ms.sao_name,''), CONCAT('(ไม่ระบุเขต) sao_code=', COALESCE(m.sao_code, 'NULL'))) sao_name,
                        COUNT(*)                            done,
                        SUM(COALESCE(e.confirmstatus,0)=0)  pending,
                        SUM(COALESCE(e.confirmstatus,0)=1)  approved

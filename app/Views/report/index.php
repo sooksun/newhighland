@@ -371,5 +371,5 @@ window.nhDashMap = function () {
   if (pins.length > 1) map.fitBounds(bounds);
 };
 </script>
-<script async defer src="https://maps.googleapis.com/maps/api/js?key=<?= View::e($googleKey) ?>&callback=nhDashMap"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=<?= View::e($googleKey) ?>&loading=async&callback=nhDashMap" async></script>
 <?php endif; ?>
