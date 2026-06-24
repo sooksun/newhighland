@@ -5,6 +5,23 @@
  * (the root .htaccess in this project denies direct web access to /config).
  */
 
+// หา path ของไฟล์ PDF (mPDF/FPDF) ที่บันเดิลไว้ในโปรเจกต์
+// เดินขึ้นจากโฟลเดอร์ของไฟล์ config นี้ แล้วลองหา vendor_pdf/<name> ก่อน ตามด้วย <name>
+// ตรง root โปรเจกต์ (รองรับทั้งไฟล์ config อยู่ที่ config/ และ config/server/ และรองรับ
+// ทั้งวางไว้ที่ newmain/vendor_pdf/mpdf หรือ newmain/mpdf) ; ถ้าไม่พบ fallback ไประบบเดิม
+$pdfDir = static function (string $name): string {
+    $d = __DIR__;
+    for ($i = 0; $i < 5; $i++) {
+        foreach ([$d . '/vendor_pdf/' . $name, $d . '/' . $name] as $cand) {
+            if (is_dir($cand)) {
+                return $cand;
+            }
+        }
+        $d = dirname($d);
+    }
+    return 'D:/laragon/www/highland/' . $name; // fallback (dev)
+};
+
 return [
 
     // ---- Database (ฐานข้อมูลเดิม ssrainfo_ssra) ----
@@ -29,20 +46,27 @@ return [
     // ---- เกณฑ์ความสูง (เมตร) สำหรับตัดสินภูเขา/พื้นราบ ----
     'elevation_threshold' => 500,
 
-    // ---- mPDF (ใช้ vendor + template + ฟอนต์เดิมจากระบบ highland เพื่อเลี่ยงสำเนา ~97MB) ----
-    // ภายในต้องมี: vendor/autoload.php, template.pdf, chk.gif, fonts/THSarabunNew*.ttf, tmp/
-    'mpdf_path'        => 'D:/laragon/www/highland/mpdf',
-    'mpdf_island_path' => 'D:/laragon/www/highland/island_pdf',
+    // ---- mPDF / FPDF (vendor + template + ฟอนต์) ----
+    // ไฟล์ถูกบันเดิลไว้ใน /vendor_pdf ของโปรเจกต์ เพื่อให้พิมพ์ PDF ได้ทุกเครื่อง
+    // (local + production) โดยไม่ผูกกับ path ของระบบเดิม highland อีกต่อไป
+    // ใช้ path แบบ relative กับ root โปรเจกต์ (__DIR__ = โฟลเดอร์ config) ; ถ้าไม่พบ
+    // จะ fallback ไปใช้ของระบบเดิม highland บนเครื่อง dev
+    // ภายใน vendor_pdf/mpdf ต้องมี: vendor/autoload.php, template.pdf, chk.gif,
+    // fonts/THSarabunNew*.ttf และ vendor/mpdf/mpdf/tmp/ (ต้องเขียนได้บน server)
+    'mpdf_path'        => $pdfDir('mpdf'),
+    'mpdf_island_path' => $pdfDir('island_pdf'),
 
     // ---- บัญชีระดับ สพฐ. (admin) ----
     // login จาก master_saonew ที่ user อยู่ในรายการนี้จะได้ role = admin
     // TODO (PRD §3): ยืนยันบัญชี สพฐ. จริง
     'admin_users' => [
-        // 'tok',
+        'tok',
+        'bismee',
+        'admin@obec',
     ],
 
     // ---- App ----
     'app_name'  => 'ระบบคัดกรองโรงเรียนพื้นที่ลักษณะพิเศษ',
     'app_env'   => 'local',         // local | production
-    'debug'     => true,
+    'debug'     => false,
 ];
