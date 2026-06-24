@@ -25,6 +25,13 @@ $certBadge  = function (int $s): array {
   <h1 class="h5 fw-bold mb-1">รออนุมัติ — รับรองผลการประเมินพื้นที่เกาะ</h1>
   <p class="text-muted small">โรงเรียนที่ประเมินเสร็จแล้ว รอ สพป./สพม. ยืนยันว่าข้อมูลถูกต้อง<?= $isAdmin ? ' · ทุกเขต' : ' · ' . View::e(Auth::saoName()) ?></p>
 
+  <?php if (!empty($saoFilter ?? '')): ?>
+  <div class="alert alert-info py-2 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <span class="small"><?= nh_icon('building', 16) ?> กรองเฉพาะเขต: <b><?= View::e(($saoName ?? '') ?: $saoFilter) ?></b></span>
+    <a class="btn btn-sm btn-ghost" href="<?= App::url('island/cert') ?>"><?= nh_icon('x', 14) ?> ล้างตัวกรองเขต</a>
+  </div>
+  <?php endif; ?>
+
   <div class="row g-2 mb-3">
     <?php foreach ([
         ['ทั้งหมด',      $stats['total']    ?? 0, 'secondary'],
@@ -40,6 +47,7 @@ $certBadge  = function (int $s): array {
   </div>
 
   <form class="row g-2 mb-3" method="get" action="<?= App::url('island/cert') ?>">
+    <?php if (!empty($saoFilter ?? '')): ?><input type="hidden" name="sao" value="<?= View::e($saoFilter) ?>"><?php endif; ?>
     <div class="col-md-4"><input class="form-control form-control-sm" name="q" value="<?= View::e($filters['q']) ?>" placeholder="ชื่อ / รหัสโรงเรียน"></div>
     <div class="col-md-3"><input class="form-control form-control-sm" name="province" value="<?= View::e($filters['province']) ?>" placeholder="จังหวัด"></div>
     <div class="col-md-3"><select class="form-select form-select-sm" name="status">

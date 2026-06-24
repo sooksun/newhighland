@@ -4,6 +4,8 @@ $typeLabels = [0 => 'ไม่เป็นพื้นที่สูง', 1 => 
 $certBadge  = function (int $s): array {
     return [0 => ['warning', 'รออนุมัติ'], 1 => ['success', 'รับรองแล้ว'], 2 => ['danger', 'ไม่รับรอง']][$s] ?? ['secondary', '-'];
 };
+// query string ของตัวกรองปัจจุบัน — ส่งให้ปุ่ม "ดูข้อมูล" เพื่อให้ปุ่มย้อนกลับคงตัวกรองเดิมไว้
+$backQs = http_build_query(array_filter($filters, fn($x) => $x !== '' && $x !== null));
 ?>
 <div class="container">
 
@@ -25,6 +27,13 @@ $certBadge  = function (int $s): array {
   <h1 class="h5 fw-bold mb-1">รออนุมัติ — รับรองผลการประเมินพื้นที่สูง</h1>
   <p class="text-muted small">โรงเรียนที่ประเมินเสร็จแล้ว รอ สพป./สพม. ยืนยันว่าข้อมูลถูกต้อง<?= $isAdmin ? ' · ทุกเขต' : ' · ' . View::e(Auth::saoName()) ?></p>
 
+  <?php if (!empty($saoFilter ?? '')): ?>
+  <div class="alert alert-info py-2 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <span class="small"><?= nh_icon('building', 16) ?> กรองเฉพาะเขต: <b><?= View::e(($saoName ?? '') ?: $saoFilter) ?></b></span>
+    <a class="btn btn-sm btn-ghost" href="<?= App::url('highland/cert') ?>"><?= nh_icon('x', 14) ?> ล้างตัวกรองเขต</a>
+  </div>
+  <?php endif; ?>
+
   <div class="row g-2 mb-3">
     <?php foreach ([
         ['ทั้งหมด',      $stats['total']    ?? 0, 'secondary'],
@@ -40,6 +49,7 @@ $certBadge  = function (int $s): array {
   </div>
 
   <form class="row g-2 mb-3" method="get" action="<?= App::url('highland/cert') ?>">
+    <?php if (!empty($saoFilter ?? '')): ?><input type="hidden" name="sao" value="<?= View::e($saoFilter) ?>"><?php endif; ?>
     <div class="col-md-4"><input class="form-control form-control-sm" name="q" value="<?= View::e($filters['q']) ?>" placeholder="ชื่อ / รหัสโรงเรียน"></div>
     <div class="col-md-3"><input class="form-control form-control-sm" name="province" value="<?= View::e($filters['province']) ?>" placeholder="จังหวัด"></div>
     <div class="col-md-3"><select class="form-select form-select-sm" name="status">
@@ -104,6 +114,8 @@ $certBadge  = function (int $s): array {
         </td>
         <?php endif; ?>
         <td class="text-nowrap">
+          <a class="btn btn-sm btn-outline-primary" href="<?= App::url('highland/cert/view?sc_id=' . $r['sc_id'] . ($backQs !== '' ? '&back=' . rawurlencode($backQs) : '')) ?>" title="ดูข้อมูลโรงเรียน"><?= nh_icon('eye', 16) ?> ดูข้อมูล</a>
+          <a class="btn btn-sm btn-ghost" href="<?= App::url('map/elevation?sc_id=' . $r['sc_id']) ?>" title="วัดความสูง/ระยะ"><?= nh_icon('ruler', 16) ?></a>
           <a class="btn btn-sm btn-ghost" href="<?= App::url('highland/eval?sc_id=' . $r['sc_id']) ?>" title="เปิดแบบประเมิน"><?= nh_icon('clipboard', 16) ?></a>
           <a class="btn btn-sm btn-ghost" href="<?= App::url('highland/print?sc_id=' . $r['sc_id']) ?>" title="พิมพ์ผล" target="_blank"><?= nh_icon('printer', 16) ?></a>
         </td>

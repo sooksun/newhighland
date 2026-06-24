@@ -11,6 +11,7 @@ use App\Core\Request;
 use App\Controllers\AuthController;
 use App\Controllers\LandingController;
 use App\Controllers\HomeController;
+use App\Controllers\DashboardController;
 use App\Controllers\SchoolController;
 use App\Controllers\MapController;
 use App\Controllers\HighlandEvalController;
@@ -18,12 +19,15 @@ use App\Controllers\HighlandCertController;
 use App\Controllers\ConfirmController;
 use App\Controllers\IslandEvalController;
 use App\Controllers\IslandCertController;
+use App\Controllers\UserAdminController;
 
 $router = new Router();
 
 // ---- หน้าแรกสาธารณะ (Landing) + Dashboard (ต้องล็อกอิน) ----
 $router->get('',          [LandingController::class, 'index']);
 $router->get('dashboard', [HomeController::class, 'index']);
+$router->get('report',        [DashboardController::class, 'index']);   // รายงานสถิติ (สพท./สพฐ.)
+$router->get('report/export', [DashboardController::class, 'export']);  // ส่งออก CSV
 
 // ---- Authentication ----
 $router->get('auth/login',  [AuthController::class, 'showLogin']);
@@ -50,11 +54,13 @@ $router->post('highland/eval/cert',     [HighlandEvalController::class, 'cert'])
 $router->get('highland/print',     [HighlandEvalController::class, 'print']);
 // 1F ขั้นที่ 5: รายการรออนุมัติ — สพท./สพฐ. รับรองผลประเมิน
 $router->get('highland/cert',      [HighlandCertController::class, 'index']);
+$router->get('highland/cert/view', [HighlandCertController::class, 'view']);   // ดูข้อมูลรายโรงเรียน (อ่านอย่างเดียว)
 $router->post('highland/cert/sao', [HighlandCertController::class, 'sao']);
 $router->post('highland/cert/spt', [HighlandCertController::class, 'spt']);
 
 // ---- ส่วนที่ 3 + 4: รับรองการคงอยู่ (พื้นที่สูง/เกาะ) ----
 $router->get('confirm',         [ConfirmController::class, 'index']);
+$router->get('confirm/view',    [ConfirmController::class, 'view']);   // ดูรายละเอียดรายโรงเรียน (อ่านอย่างเดียว)
 $router->post('confirm/school', [ConfirmController::class, 'school']);
 $router->post('confirm/sao',    [ConfirmController::class, 'sao']);
 $router->post('confirm/spt',    [ConfirmController::class, 'spt']);
@@ -71,5 +77,11 @@ $router->get('island/print',      [IslandEvalController::class, 'print']);
 $router->get('island/cert',       [IslandCertController::class, 'index']);
 $router->post('island/cert/sao',  [IslandCertController::class, 'sao']);
 $router->post('island/cert/spt',  [IslandCertController::class, 'spt']);
+
+// ---- จัดการผู้ใช้ + รหัสผ่าน (เฉพาะ สพฐ. admin) ----
+$router->get('admin/users',           [UserAdminController::class, 'index']);
+$router->post('admin/users/save',     [UserAdminController::class, 'save']);
+$router->post('admin/users/password', [UserAdminController::class, 'password']);
+$router->post('admin/users/delete',   [UserAdminController::class, 'delete']);
 
 $router->dispatch(Request::method(), Request::path());
