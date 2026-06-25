@@ -33,9 +33,11 @@ class DashboardController
         return [$saoId, $area, $areas];
     }
 
-    /** ป้ายชื่อระดับสาธารณูปโภคแต่ละข้อ (key => [id => label]) */
+    /** ป้ายชื่อระดับสาธารณูปโภคแต่ละข้อ (key => [id => label]) — memoize ต่อ request (index+export reuse) */
     private function utilLabels(int $area): array
     {
+        static $memo = [];
+        if (isset($memo[$area])) return $memo[$area];
         $out = [];
         foreach (DashboardStat::utilConfig($area) as $key => $nn) {
             $opts = $area === 1 ? CriteriaOption::get($nn) : IslandOption::get($nn);
@@ -43,7 +45,7 @@ class DashboardController
             foreach ($opts as $o) $map[(int) $o['id']] = $o['label'];
             $out[$key] = $map;
         }
-        return $out;
+        return $memo[$area] = $out;
     }
 
     public function index(): void

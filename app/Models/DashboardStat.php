@@ -6,11 +6,15 @@ use App\Core\Db;
 /**
  * สถิติสำหรับหน้า "รายงานสถิติ" (DashboardController) — รวม query แบบ aggregate ไว้ที่เดียว
  *
- * หลักการ:
- *  - กรองตาม role: สพฐ. (admin) = ทุกเขต ($saoId = null); เขต (sao) = เฉพาะสังกัดตน (master_school.sao_code)
- *    ใช้รูปแบบเดียวกับ HighlandEval::listForCert / Auth::canAccessSchool
- *  - รองรับ 2 ประเภทพื้นที่ผ่าน $area (1=พื้นที่สูง → highland_eval, 2=พื้นที่เกาะ → island_eval)
- *  - SQL portable (ไม่ใช้ window function/CTE) — เปอร์เซ็นต์คิดในชั้น view
+ * หลักการ (ออกแบบใหม่เพื่อความเร็ว — ดู docs/plan velvety-launching-plum):
+ *  - กรองตาม role: สพฐ. (admin) = ทุกเขต ($saoId = null); เขต (sao) = เฉพาะสังกัดตน
+ *    *ไม่* join master_school 30k แถวต่อ query แล้ว — admin ตัด join ทิ้ง, เขต resolve รายชื่อ
+ *    sc_id ครั้งเดียว (saoScids) แล้วกรองด้วย e.sc_id IN (...) (master_school มี idx_sao_code)
+ *  - funnel + typeDist + scoreHist + utilities + ส่วน kpi ของพื้นที่หนึ่ง = query เดียว (areaStats)
+ *    ด้วย conditional SUM แล้ว memoize ต่อ request
+ *  - join ที่จำเป็น (school_new/master_school) แก้ชนิดให้ใช้ index: school_new ใช้
+ *    CAST(e.sc_id AS CHAR) (PK varchar), master_school ใช้ CONVERT(e.sc_id USING utf8mb3)
+ *    (idx_sc_id collation utf8mb3_general_ci)
  *  - คอลัมน์/ชื่อตารางทั้งหมดมาจากค่าคงที่ภายใน ไม่ใช่ค่าจากผู้ใช้ (กัน SQL injection)
  */
 class DashboardStat
@@ -34,15 +38,109 @@ class DashboardStat
     /** จำนวนระดับสูงสุดของแต่ละข้อ (เท่ากันทั้งสองพื้นที่) */
     private const UTIL_MAX = ['water' => 6, 'power' => 2, 'phone' => 4, 'net' => 4];
 
-    /** เงื่อนไขกรองตาม role สำหรับตาราง eval (JOIN master_school m) */
-    private static function scope(?int $saoId): array
+    // ---- role scope (ไม่ join master_school) ----
+
+    /**
+     * รายชื่อ sc_id (int) ของโรงเรียนในสังกัดเขต — resolve ครั้งเดียว (memoize)
+     * admin (saoId=null) → null = ไม่กรอง; เขต → array (อาจว่างถ้าเขตไม่มี ร.ร.)
+     * ใช้ idx_sao_code; CAST sc_id เป็น UNSIGNED ให้ตรงชนิด e.sc_id (INT)
+     */
+    private static function saoScids(?int $saoId): ?array
     {
-        return $saoId === null ? ['', []] : [' AND m.sao_code = ?', [$saoId]];
+        if ($saoId === null) return null;
+        static $memo = [];
+        if (array_key_exists($saoId, $memo)) return $memo[$saoId];
+        $rows = Db::all('SELECT CAST(m.sc_id AS UNSIGNED) id FROM master_school m WHERE m.sao_code = ?', [$saoId]);
+        return $memo[$saoId] = array_map(fn($r) => (int) $r['id'], $rows);
     }
 
-    // ---- การ์ด KPI (รวมพื้นที่สูง + เกาะ ในขอบเขตของผู้ใช้) ----
+    /** แปลงชุด sc_id เป็น [sqlFragment, params] สำหรับกรอง eval (e.sc_id IN ...) */
+    private static function evalScope(?array $scids): array
+    {
+        if ($scids === null) return ['', []];           // admin = ไม่กรอง
+        if ($scids === [])   return [' AND 1=0', []];   // เขตไม่มี ร.ร. = ผลว่าง
+        $ph = implode(',', array_fill(0, count($scids), '?'));
+        return [" AND e.sc_id IN ($ph)", $scids];
+    }
 
-    /** จำนวนเป้าหมายจาก roster การคงอยู่ (school_confirm) */
+    // ---- single-pass aggregation ต่อพื้นที่ (funnel + type + score + utilities + kpi) ----
+
+    /**
+     * query เดียวเหนือ eval table (ไม่ join master_school) — memoize ต่อ request
+     * @return array{funnel:array,kpi:array,typeDist:array,scoreHist:array,utils:array}
+     */
+    private static function areaStats(int $area, ?array $scids, int $year): array
+    {
+        static $memo = [];
+        $key = $area . '|' . $year . '|' . md5(json_encode($scids));
+        if (isset($memo[$key])) return $memo[$key];
+
+        $c = self::cfg($area);
+        $typeCol = $c['type'];
+        $multi = ($area === 1);   // พื้นที่สูง: ข้อ 07-10 เลือกได้หลายข้อ
+        [$scopeSql, $scopeParams] = self::evalScope($scids);
+
+        $cols = [
+            "SUM({$c['pinned']}) pinned",                                              // funnel: ทุกแถวในปี
+            "SUM(e.sum_score IS NOT NULL) evaluated",
+            "SUM(e.sum_score >= 50) passed",
+            "SUM(COALESCE(e.confirmstatus,0)=1) cert_all",                             // funnel (ไม่กรอง sum_score)
+            "SUM(COALESCE(e.spt_commit,0)=1) spt_all",
+            "SUM(e.sum_score IS NOT NULL AND COALESCE(e.confirmstatus,0)=1) cert_eval",// kpi (กรอง sum_score)
+            "SUM(e.sum_score IS NOT NULL AND COALESCE(e.spt_commit,0)=1) spt_eval",
+        ];
+        for ($t = 0; $t <= 3; $t++) {
+            $cols[] = "SUM(e.sum_score IS NOT NULL AND e.`$typeCol`=$t) t$t";
+        }
+        $cols[] = "SUM(e.sum_score IS NOT NULL AND e.sum_score < 50) h0";
+        $cols[] = "SUM(e.sum_score >= 50 AND e.sum_score < 60) h1";
+        $cols[] = "SUM(e.sum_score >= 60 AND e.sum_score < 70) h2";
+        $cols[] = "SUM(e.sum_score >= 70 AND e.sum_score < 80) h3";
+        $cols[] = "SUM(e.sum_score >= 80) h4";
+        foreach (self::utilConfig($area) as $ukey => $nn) {
+            $max  = self::UTIL_MAX[$ukey];
+            $col  = 'citeria' . $nn;
+            $expr = $multi ? self::maxLevelExpr($col, $max)
+                           : "COALESCE(CAST(NULLIF(e.`$col`,'') AS UNSIGNED),0)";
+            for ($lvl = 1; $lvl <= $max; $lvl++) {
+                $cols[] = "SUM(e.sum_score IS NOT NULL AND ($expr)=$lvl) u_{$ukey}_{$lvl}";
+            }
+        }
+
+        $sql = 'SELECT ' . implode(",\n       ", $cols) . "\n  FROM `{$c['table']}` e WHERE e.acadyears = ?" . $scopeSql;
+        $r = Db::one($sql, array_merge([$year], $scopeParams)) ?? [];
+        $g = fn($k) => (int) ($r[$k] ?? 0);
+
+        $res = [
+            'funnel' => [
+                'pinned'        => $g('pinned'),
+                'evaluated'     => $g('evaluated'),
+                'passed'        => $g('passed'),
+                'sao_certed'    => $g('cert_all'),
+                'spt_announced' => $g('spt_all'),
+            ],
+            'kpi' => [
+                'done'          => $g('evaluated'),
+                'passed'        => $g('passed'),
+                'sao_certed'    => $g('cert_eval'),
+                'spt_announced' => $g('spt_eval'),
+            ],
+            'typeDist'  => [0 => $g('t0'), 1 => $g('t1'), 2 => $g('t2'), 3 => $g('t3')],
+            'scoreHist' => ['<50' => $g('h0'), '50-59' => $g('h1'), '60-69' => $g('h2'), '70-79' => $g('h3'), '80+' => $g('h4')],
+            'utils'     => [],
+        ];
+        foreach (self::utilConfig($area) as $ukey => $nn) {
+            $max = self::UTIL_MAX[$ukey];
+            $levels = []; $answered = 0;
+            for ($lvl = 1; $lvl <= $max; $lvl++) { $n = $g("u_{$ukey}_{$lvl}"); $levels[$lvl] = $n; $answered += $n; }
+            $res['utils'][$ukey] = ['nn' => $nn, 'max' => $max, 'levels' => $levels, 'answered' => $answered];
+        }
+        return $memo[$key] = $res;
+    }
+
+    // ---- การ์ด KPI ----
+
+    /** จำนวนเป้าหมายจาก roster การคงอยู่ (school_confirm — มี index idx_sao/idx_area อยู่แล้ว) */
     public static function targets(?int $saoId, int $year): array
     {
         $sql = 'SELECT COUNT(*) total, SUM(area_type=1) high, SUM(area_type=2) island
@@ -53,112 +151,55 @@ class DashboardStat
         return ['total' => (int)($r['total'] ?? 0), 'high' => (int)($r['high'] ?? 0), 'island' => (int)($r['island'] ?? 0)];
     }
 
-    /** ดำเนินการ/ผ่านเกณฑ์/เขตรับรอง/สพฐ.ประกาศ — รวมทั้งสองตาราง (UNION ALL) */
+    /** ดำเนินการ/ผ่านเกณฑ์/เขตรับรอง/สพฐ.ประกาศ — รวมสองพื้นที่จากผล areaStats (เลิก UNION) */
     public static function kpis(?int $saoId, int $year): array
     {
-        [$rs, $rp] = self::scope($saoId);
-        $leg = "SELECT e.sum_score AS s,
-                       (COALESCE(e.confirmstatus,0)=1) AS c,
-                       (COALESCE(e.spt_commit,0)=1)    AS p
-                  FROM %s e LEFT JOIN master_school m ON m.sc_id = e.sc_id
-                 WHERE e.acadyears = ? AND e.sum_score IS NOT NULL $rs";
-        $sql = 'SELECT COUNT(*) done,
-                       SUM(t.s >= 50) passed,
-                       SUM(t.c)       sao_certed,
-                       SUM(t.p)       spt_announced
-                  FROM ( ' . sprintf($leg, 'highland_eval')
-                       . ' UNION ALL ' . sprintf($leg, 'island_eval') . ' ) t';
-        $params = array_merge([$year], $rp, [$year], $rp);
-        $r = Db::one($sql, $params) ?? [];
+        $scids = self::saoScids($saoId);
+        $h = self::areaStats(1, $scids, $year)['kpi'];
+        $i = self::areaStats(2, $scids, $year)['kpi'];
         return [
-            'done'          => (int)($r['done'] ?? 0),
-            'passed'        => (int)($r['passed'] ?? 0),
-            'sao_certed'    => (int)($r['sao_certed'] ?? 0),
-            'spt_announced' => (int)($r['spt_announced'] ?? 0),
+            'done'          => $h['done']          + $i['done'],
+            'passed'        => $h['passed']        + $i['passed'],
+            'sao_certed'    => $h['sao_certed']    + $i['sao_certed'],
+            'spt_announced' => $h['spt_announced'] + $i['spt_announced'],
         ];
     }
 
-    // ---- Funnel (ตามประเภทพื้นที่ที่เลือก) ----
+    // ---- wrappers (รูปแบบผลลัพธ์เหมือนเดิม — view/export ไม่ต้องแก้) ----
 
     public static function funnel(int $area, ?int $saoId, int $year): array
     {
-        $c = self::cfg($area);
-        [$rs, $rp] = self::scope($saoId);
-        $sql = "SELECT
-                  SUM({$c['pinned']})                       pinned,
-                  SUM(e.sum_score IS NOT NULL)              evaluated,
-                  SUM(e.sum_score >= 50)                    passed,
-                  SUM(COALESCE(e.confirmstatus,0)=1)        sao_certed,
-                  SUM(COALESCE(e.spt_commit,0)=1)           spt_announced
-                FROM `{$c['table']}` e
-                LEFT JOIN master_school m ON m.sc_id = e.sc_id
-                WHERE e.acadyears = ? $rs";
-        $r = Db::one($sql, array_merge([$year], $rp)) ?? [];
-        return [
-            'pinned'        => (int)($r['pinned'] ?? 0),
-            'evaluated'     => (int)($r['evaluated'] ?? 0),
-            'passed'        => (int)($r['passed'] ?? 0),
-            'sao_certed'    => (int)($r['sao_certed'] ?? 0),
-            'spt_announced' => (int)($r['spt_announced'] ?? 0),
-        ];
+        return self::areaStats($area, self::saoScids($saoId), $year)['funnel'];
     }
-
-    // ---- โดนัทระดับความยุ่งยาก (highland_type / island_type) ----
 
     /** คืน [0=>n,1=>n,2=>n,3=>n] */
     public static function typeDist(int $area, ?int $saoId, int $year): array
     {
-        $c = self::cfg($area);
-        [$rs, $rp] = self::scope($saoId);
-        $sql = "SELECT e.`{$c['type']}` lvl, COUNT(*) n
-                  FROM `{$c['table']}` e
-                  LEFT JOIN master_school m ON m.sc_id = e.sc_id
-                 WHERE e.acadyears = ? AND e.sum_score IS NOT NULL $rs
-                 GROUP BY e.`{$c['type']}`";
-        $out = [0 => 0, 1 => 0, 2 => 0, 3 => 0];
-        foreach (Db::all($sql, array_merge([$year], $rp)) as $r) {
-            $l = (int) $r['lvl'];
-            if (isset($out[$l])) $out[$l] = (int) $r['n'];
-        }
-        return $out;
+        return self::areaStats($area, self::saoScids($saoId), $year)['typeDist'];
     }
-
-    // ---- ฮิสโทแกรมคะแนนรวม ----
 
     /** คืน [ '<50'=>n,'50-59'=>n,'60-69'=>n,'70-79'=>n,'80+'=>n ] */
     public static function scoreHist(int $area, ?int $saoId, int $year): array
     {
-        $c = self::cfg($area);
-        [$rs, $rp] = self::scope($saoId);
-        $sql = "SELECT CASE WHEN e.sum_score < 50 THEN 0
-                            WHEN e.sum_score < 60 THEN 1
-                            WHEN e.sum_score < 70 THEN 2
-                            WHEN e.sum_score < 80 THEN 3
-                            ELSE 4 END bucket,
-                       COUNT(*) n
-                  FROM `{$c['table']}` e
-                  LEFT JOIN master_school m ON m.sc_id = e.sc_id
-                 WHERE e.acadyears = ? AND e.sum_score IS NOT NULL $rs
-                 GROUP BY bucket";
-        $labels = ['<50', '50-59', '60-69', '70-79', '80+'];
-        $out = array_fill_keys($labels, 0);
-        foreach (Db::all($sql, array_merge([$year], $rp)) as $r) {
-            $out[$labels[(int) $r['bucket']] ?? '<50'] = (int) $r['n'];
-        }
-        return $out;
+        return self::areaStats($area, self::saoScids($saoId), $year)['scoreHist'];
     }
 
-    // ---- อันดับจังหวัด (ผ่านเกณฑ์มากสุด) ----
+    /** @return array key => ['nn'=>'07','max'=>6,'levels'=>[1=>n,...],'answered'=>int] */
+    public static function utilities(int $area, ?int $saoId, int $year): array
+    {
+        return self::areaStats($area, self::saoScids($saoId), $year)['utils'];
+    }
+
+    // ---- อันดับจังหวัด (ผ่านเกณฑ์มากสุด) — ใช้ school_new ผ่าน CAST (eq_ref PK) ----
 
     public static function topProvinces(int $area, ?int $saoId, int $year, int $limit = 8): array
     {
         $c = self::cfg($area);
-        [$rs, $rp] = self::scope($saoId);
-        $prov = 'COALESCE(NULLIF(s.province,""), NULLIF(e.provinces,""), m.provinces)';
+        [$rs, $rp] = self::evalScope(self::saoScids($saoId));
+        $prov = 'COALESCE(NULLIF(s.province,""), NULLIF(e.provinces,""))';
         $sql = "SELECT $prov province, COUNT(*) passed
                   FROM `{$c['table']}` e
-                  LEFT JOIN master_school m ON m.sc_id = e.sc_id
-                  LEFT JOIN school_new   s ON s.sc_id = e.sc_id
+                  LEFT JOIN school_new s ON s.sc_id = CAST(e.sc_id AS CHAR)
                  WHERE e.acadyears = ? AND e.sum_score >= 50 $rs
                  GROUP BY province
                 HAVING province IS NOT NULL AND province <> ''
@@ -167,9 +208,8 @@ class DashboardStat
         return Db::all($sql, array_merge([$year], $rp));
     }
 
-    // ---- สาธารณูปโภค (น้ำ/ไฟ/โทร/เน็ต) ----
+    // ---- สาธารณูปโภค: นิพจน์ "ระดับสูงสุดที่เลือก" (comma-list, เทียบ ScoreService::maxOf) ----
 
-    /** สร้างนิพจน์ "ระดับสูงสุดที่เลือก" สำหรับข้อแบบ comma-list (เทียบ ScoreService::maxOf) */
     private static function maxLevelExpr(string $col, int $max): string
     {
         $clean = "REPLACE(e.`$col`,' ','')";
@@ -180,49 +220,20 @@ class DashboardStat
         return 'GREATEST(' . implode(',', $parts) . ')';
     }
 
-    /**
-     * @return array key => ['nn'=>'07','max'=>6,'levels'=>[1=>n,...],'answered'=>int]
-     */
-    public static function utilities(int $area, ?int $saoId, int $year): array
-    {
-        $c = self::cfg($area);
-        [$rs, $rp] = self::scope($saoId);
-        $multi = ($area === 1);   // พื้นที่สูง: ข้อ 07-10 เลือกได้หลายข้อ
-        $out = [];
-        foreach (self::utilConfig($area) as $key => $nn) {
-            $max = self::UTIL_MAX[$key];
-            $col = 'citeria' . $nn;
-            $expr = $multi
-                ? self::maxLevelExpr($col, $max)
-                : "COALESCE(CAST(NULLIF(e.`$col`,'') AS UNSIGNED),0)";
-            $sql = "SELECT $expr lvl, COUNT(*) n
-                      FROM `{$c['table']}` e
-                      LEFT JOIN master_school m ON m.sc_id = e.sc_id
-                     WHERE e.acadyears = ? AND e.sum_score IS NOT NULL $rs
-                     GROUP BY lvl";
-            $levels = array_fill(1, $max, 0);
-            $answered = 0;
-            foreach (Db::all($sql, array_merge([$year], $rp)) as $r) {
-                $l = (int) $r['lvl'];
-                if ($l >= 1 && $l <= $max) { $levels[$l] = (int) $r['n']; $answered += (int) $r['n']; }
-            }
-            $out[$key] = ['nn' => $nn, 'max' => $max, 'levels' => $levels, 'answered' => $answered];
-        }
-        return $out;
-    }
-
-    /** สรุปสถานะรับรองรายเขต (drill-down เขตที่ยัง "ค้างรับรอง") + ชื่อเขตจาก master_sao */
+    /** สรุปสถานะรับรองรายเขต (drill-down เขตที่ยัง "ค้างรับรอง") — join master_school แบบ indexed */
     public static function certByDistrict(int $area, ?int $saoId, int $year, int $limit = 15): array
     {
         $c = self::cfg($area);
-        [$rs, $rp] = self::scope($saoId);
+        // join master_school มีอยู่ (ต้อง group ตาม sao_code) จึงกรองเขตด้วย m.sao_code ตรงนี้ได้
+        $rs = ''; $rp = [];
+        if ($saoId !== null) { $rs = ' AND m.sao_code = ?'; $rp = [$saoId]; }
         $sql = "SELECT m.sao_code,
                        COALESCE(NULLIF(ms.sao_name,''), CONCAT('(ไม่ระบุเขต) sao_code=', COALESCE(m.sao_code, 'NULL'))) sao_name,
                        COUNT(*)                            done,
                        SUM(COALESCE(e.confirmstatus,0)=0)  pending,
                        SUM(COALESCE(e.confirmstatus,0)=1)  approved
                   FROM `{$c['table']}` e
-                  LEFT JOIN master_school m  ON m.sc_id  = e.sc_id
+                  LEFT JOIN master_school m  ON m.sc_id  = CONVERT(e.sc_id USING utf8mb3)
                   LEFT JOIN master_sao    ms ON ms.sao_id = m.sao_code
                  WHERE e.acadyears = ? AND e.sum_score IS NOT NULL $rs
                  GROUP BY m.sao_code, ms.sao_name
@@ -234,28 +245,28 @@ class DashboardStat
 
     // ---- กลุ่มชาติพันธุ์ (เฉพาะพื้นที่สูง — highland_eval_hilltrib) ----
 
-    /**
-     * @return array{top: array, groups: int, students: int, schools: int}
-     *   top = [['ethnic'=>..,'students'=>..,'schools'=>..], ...] เรียงมาก→น้อย
-     */
+    /** @return array{top: array, groups: int, students: int, schools: int} */
     public static function ethnic(?int $saoId, int $year, int $limit = 10): array
     {
-        [$rs, $rp] = $saoId === null ? ['', []] : [' AND m.sao_code = ?', [$saoId]];
+        $scids = self::saoScids($saoId);
+        if ($scids === null)      { $scope = '';          $sp = []; }
+        elseif ($scids === [])    { $scope = ' AND 1=0';  $sp = []; }
+        else { $ph = implode(',', array_fill(0, count($scids), '?')); $scope = " AND h.sc_id IN ($ph)"; $sp = $scids; }
+
         $base = "FROM highland_eval_hilltrib h
-                 LEFT JOIN hilltrib      t ON t.ethnic_id = h.hilltrib
-                 LEFT JOIN master_school m ON m.sc_id     = h.sc_id
-                WHERE h.acadyears = ? AND TRIM(COALESCE(t.ethnic,'')) <> '' $rs";
+                 LEFT JOIN hilltrib t ON t.ethnic_id = h.hilltrib
+                WHERE h.acadyears = ? AND TRIM(COALESCE(t.ethnic,'')) <> '' $scope";
 
         $top = Db::all(
             "SELECT TRIM(t.ethnic) ethnic, SUM(h.hilltrib_number) students, COUNT(DISTINCT h.sc_id) schools
              $base GROUP BY ethnic ORDER BY students DESC LIMIT " . (int) $limit,
-            array_merge([$year], $rp)
+            array_merge([$year], $sp)
         );
         $sum = Db::one(
             "SELECT COUNT(DISTINCT TRIM(t.ethnic)) `groups`,
                     COALESCE(SUM(h.hilltrib_number),0) students,
                     COUNT(DISTINCT h.sc_id) schools $base",
-            array_merge([$year], $rp)
+            array_merge([$year], $sp)
         ) ?? [];
 
         return [
@@ -266,21 +277,20 @@ class DashboardStat
         ];
     }
 
-    // ---- พิกัดโรงเรียนสำหรับแผนที่หมุด ----
+    // ---- พิกัดโรงเรียนสำหรับแผนที่หมุด — ใช้ school_new ผ่าน CAST (eq_ref PK) ----
 
     /** คืนเฉพาะแถวที่พิกัดอยู่ในกรอบประเทศไทย (กันค่าขยะ); type = ระดับความยุ่งยาก */
     public static function pins(int $area, ?int $saoId, int $year, int $limit = 800): array
     {
         $c = self::cfg($area);
-        [$rs, $rp] = self::scope($saoId);
-        $prov = 'COALESCE(NULLIF(s.province,""), NULLIF(e.provinces,""), m.provinces)';
+        [$rs, $rp] = self::evalScope(self::saoScids($saoId));
+        $prov = 'COALESCE(NULLIF(s.province,""), NULLIF(e.provinces,""))';
         $sql = "SELECT e.sc_id,
-                       COALESCE(NULLIF(e.sc_names,''), m.sc_name) sc_name,
+                       COALESCE(NULLIF(e.sc_names,''), s.sc_name) sc_name,
                        e.lat, e.lng, e.`{$c['type']}` type, e.sum_score,
                        $prov province
                   FROM `{$c['table']}` e
-                  LEFT JOIN master_school m ON m.sc_id = e.sc_id
-                  LEFT JOIN school_new   s ON s.sc_id = e.sc_id
+                  LEFT JOIN school_new s ON s.sc_id = CAST(e.sc_id AS CHAR)
                  WHERE e.acadyears = ?
                    AND e.lat <> '' AND e.lng <> ''
                    AND CAST(e.lat AS DECIMAL(12,7)) BETWEEN 5  AND 21
