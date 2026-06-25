@@ -67,6 +67,7 @@ if (!function_exists('nh_icon')) {
             'edit'        => '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
             'list'        => '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>',
             'clock'       => '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+            'refresh'     => '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>',
             'trendUp'     => '<path d="m3 17 6-6 4 4 8-8"/><path d="M17 7h4v4"/>',
             'layers'      => '<path d="m12 3 9 5-9 5-9-5Z"/><path d="m3 13 9 5 9-5"/>',
             'globe'       => '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18"/>',

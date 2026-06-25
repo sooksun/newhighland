@@ -8,6 +8,14 @@
 $pct = fn($a, $b) => $b > 0 ? round($a * 100 / $b, 1) : 0.0;
 $areaName = $area === 2 ? 'พื้นที่เกาะ' : 'พื้นที่สูง';
 
+// เวลาที่ประมวลผลข้อมูลล่าสุด (จาก cache) — แสดงเป็นเวลาไทย/ปี พ.ศ.
+$asOf = '-';
+if (!empty($computedAt)) {
+    $dt = (new DateTime('@' . (int) $computedAt))->setTimezone(new DateTimeZone('Asia/Bangkok'));
+    $thMonths = [1=>'ม.ค.',2=>'ก.พ.',3=>'มี.ค.',4=>'เม.ย.',5=>'พ.ค.',6=>'มิ.ย.',7=>'ก.ค.',8=>'ส.ค.',9=>'ก.ย.',10=>'ต.ค.',11=>'พ.ย.',12=>'ธ.ค.'];
+    $asOf = (int) $dt->format('j') . ' ' . $thMonths[(int) $dt->format('n')] . ' ' . ((int) $dt->format('Y') + 543) . ' ' . $dt->format('H:i') . ' น.';
+}
+
 // ---- KPI ----
 $target = (int) $targets['total'];
 $done   = (int) $kpi['done'];
@@ -94,7 +102,11 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APO
       <span class="badge <?= $area === 2 ? 'badge-island' : 'badge-highland' ?>"><?= View::e($areaName) ?></span>
       <span class="badge badge-neutral"><?= $isAdmin ? 'ทุกเขต' : View::e(Auth::saoName()) ?></span>
     </div>
-    <a class="btn btn-sm btn-outline-secondary" href="<?= App::url('report/export?area=' . $area) ?>"><?= nh_icon('fileText', 15) ?> Export CSV</a>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <span class="text-muted small d-inline-flex align-items-center gap-1" title="ค่าที่ประมวลผลไว้ล่าสุด"><?= nh_icon('clock', 14) ?> ข้อมูล ณ <?= View::e($asOf) ?></span>
+      <a class="btn btn-sm btn-primary" href="<?= View::e($refreshUrl ?? App::url('report?area=' . $area . '&refresh=1')) ?>" title="คำนวณค่าล่าสุดแบบ real-time แล้วบันทึกไว้"><?= nh_icon('refresh', 15) ?> ประมวลผลใหม่</a>
+      <a class="btn btn-sm btn-outline-secondary" href="<?= App::url('report/export?area=' . $area) ?>"><?= nh_icon('fileText', 15) ?> Export CSV</a>
+    </div>
   </div>
 
   <h1 class="h5 fw-bold mb-1">ภาพรวมการคัดกรองโรงเรียนพื้นที่ลักษณะพิเศษ</h1>

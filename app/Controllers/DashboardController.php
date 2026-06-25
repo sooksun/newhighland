@@ -3,6 +3,7 @@ namespace App\Controllers;
 
 use App\Core\App;
 use App\Core\Auth;
+use App\Core\Cache;
 use App\Core\Request;
 use App\Core\View;
 use App\Models\CriteriaOption;
@@ -53,26 +54,46 @@ class DashboardController
         Auth::require([Auth::ROLE_SAO, Auth::ROLE_ADMIN]);
         [$saoId, $area, $areas] = $this->context();
 
-        View::render('report/index', [
+        // แสดง "ค่าล่าสุดที่ประมวลผลไว้" จาก cache ทันที; กด "ประมวลผลใหม่" (?refresh=1) = คำนวณสด + เขียนทับ cache
+        $key     = 'dash_' . $area . '_' . ($saoId ?? 'all') . '_' . $this->year;
+        $refresh = Request::get('refresh', '') !== '';
+        $data    = $refresh ? null : Cache::get($key);
+        if ($data === null) {
+            $data = $this->compute($area, $saoId);
+            Cache::put($key, $data);
+        }
+
+        View::render('report/index', array_merge($data, [
             'title'      => 'รายงานสถิติ — ภาพรวมการคัดกรอง',
             'year'       => $this->year,
             'area'       => $area,
             'areas'      => $areas,
             'isAdmin'    => Auth::isAdmin(),
-            'targets'    => DashboardStat::targets($saoId, $this->year),
-            'kpi'        => DashboardStat::kpis($saoId, $this->year),
-            'funnel'     => DashboardStat::funnel($area, $saoId, $this->year),
-            'typeDist'   => DashboardStat::typeDist($area, $saoId, $this->year),
-            'scoreHist'  => DashboardStat::scoreHist($area, $saoId, $this->year),
-            'provinces'  => DashboardStat::topProvinces($area, $saoId, $this->year),
-            'utils'      => DashboardStat::utilities($area, $saoId, $this->year),
-            'utilLabels' => $this->utilLabels($area),
-            // ไทล์เพิ่ม: ชาติพันธุ์ (เฉพาะพื้นที่สูง), แผนที่หมุด, เขตค้างรับรอง
-            'ethnic'     => $area === 1 ? DashboardStat::ethnic($saoId, $this->year) : null,
-            'pins'       => DashboardStat::pins($area, $saoId, $this->year),
-            'pending'    => DashboardStat::certByDistrict($area, $saoId, $this->year),
             'googleKey'  => (string) App::config('google_maps_key'),
-        ]);
+            'computedAt' => (int) ($data['computed_at'] ?? 0),
+            'refreshUrl' => App::url('report?area=' . $area . '&refresh=1'),
+        ]));
+    }
+
+    /** ประมวลผลข้อมูลรายงานทั้งหน้า (ใช้ทั้งตอนสด และตอนเก็บลง cache) — ติด computed_at */
+    private function compute(int $area, ?int $saoId): array
+    {
+        $y = $this->year;
+        return [
+            'targets'     => DashboardStat::targets($saoId, $y),
+            'kpi'         => DashboardStat::kpis($saoId, $y),
+            'funnel'      => DashboardStat::funnel($area, $saoId, $y),
+            'typeDist'    => DashboardStat::typeDist($area, $saoId, $y),
+            'scoreHist'   => DashboardStat::scoreHist($area, $saoId, $y),
+            'provinces'   => DashboardStat::topProvinces($area, $saoId, $y),
+            'utils'       => DashboardStat::utilities($area, $saoId, $y),
+            'utilLabels'  => $this->utilLabels($area),
+            // ไทล์เพิ่ม: ชาติพันธุ์ (เฉพาะพื้นที่สูง), แผนที่หมุด, เขตค้างรับรอง
+            'ethnic'      => $area === 1 ? DashboardStat::ethnic($saoId, $y) : null,
+            'pins'        => DashboardStat::pins($area, $saoId, $y),
+            'pending'     => DashboardStat::certByDistrict($area, $saoId, $y),
+            'computed_at' => time(),
+        ];
     }
 
     /** ส่งออกข้อมูลรายงานเป็น CSV (UTF-8 + BOM ให้ Excel อ่านภาษาไทยได้ถูก) */
