@@ -1,0 +1,42 @@
+-- ย้อนกลับค่าเดิม
+USE newssra;
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1081010154';  -- โรงเรียนบ้านสังกาอู้
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1081010153';  -- โรงเรียนบ้านเกาะปอ
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1081010199';  -- โรงเรียนบ้านคลองเตาะ
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1081010197';  -- โรงเรียนบ้านเกาะศรีบอยา
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1056320178';  -- บ้านบุญเรือง
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1082330054';  -- โรงเรียนเกียรติประชา
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1082330041';  -- โรงเรียนบ้านคลองเหีย
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1082330045';  -- โรงเรียนบ้านท่าเรือ
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1082330038';  -- โรงเรียนบ้านริมทะเล
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1082330047';  -- โรงเรียนอ่าวกะพ้อ
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1085460022';  -- โรงเรียนบ้านปากน้ำ
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1085460024';  -- โรงเรียนบ้านเกาะช้าง
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1051510143';  -- บ้านปางส้าน
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1091560074';  -- โรงเรียนบ้านเกาะบูโหลน
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1091560079';  -- โรงเรียนเพียงหลวง ๔
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1091560038';  -- โรงเรียนบ้านตันหยงกลิง
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1091560034';  -- โรงเรียนบ้านตันหยงกาโบยชัยพัฒนา
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1091560032';  -- โรงเรียนบ้านตำมะลังเหนือ
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1091560035';  -- โรงเรียนบ้านเกาะยาว
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1084640216';  -- โรงเรียนบ้านปากดอนสัก
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1084640112';  -- โรงเรียนบ้านหน้าค่าย
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1057120725';  -- แม่เจดีย์วิทยาคม
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1050130190';  -- บ้านแม่งอนกลาง
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1050130839';  -- บ้านตีนตก
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1050130111';  -- ชุมชนบ้านเมืองงาย
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1050130086';  -- บ้านแม่นะ
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1042520129';  -- ด่านซ้าย
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1042520167';  -- บ้านกกโพธิ์วังกำ
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1042520147';  -- บ้านนาดี
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1042520131';  -- บ้านนาทุ่ม
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1042520191';  -- บ้านน้ำพุง
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1042520151';  -- บ้านผึ้ง
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1042520166';  -- บ้านหัวฝาย
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1042520155';  -- บ้านห้วยตาด
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1042520161';  -- บ้านโพนสูง
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1042520130';  -- อนุบาลด่านซ้าย
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1042520370';  -- บ้านนาแห้ว
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1042520378';  -- บ้านหัวด่านนาปูน
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1042520360';  -- บ้านนาขามป้อม
+UPDATE school_location SET lat='13.764737', lng='100.509661' WHERE id='1042520343';  -- บ้านหนองบง
