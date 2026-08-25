@@ -88,20 +88,31 @@ $tabAreas = \App\Services\SchoolMenu::current()['areas'] ?: [1, 2];
         <input type="hidden" name="area" value="<?= View::e($area) ?>">
 
         <fieldset <?= $locked ? 'disabled' : '' ?>>
+        <?php $op = (int) ($r['opened'] ?? 1); ?>
         <div class="mb-3">
           <label class="form-label fw-bold d-block">สถานะปัจจุบันของโรงเรียน</label>
           <div class="form-check">
-            <input class="form-check-input opened-radio" type="radio" name="opened" id="op1_<?= $r['id'] ?>" value="1" <?= ((int)($r['opened']??1)!==0)?'checked':'' ?>>
+            <input class="form-check-input opened-radio" type="radio" name="opened" id="op1_<?= $r['id'] ?>" value="1" <?= $op===1?'checked':'' ?>>
             <label class="form-check-label" for="op1_<?= $r['id'] ?>">ยังเปิดทำการเรียนการสอน (คงอยู่ ไม่ยุบ/รวม/เลิก)</label>
           </div>
           <div class="form-check">
-            <input class="form-check-input opened-radio" type="radio" name="opened" id="op0_<?= $r['id'] ?>" value="0" <?= ((int)($r['opened']??1)===0)?'checked':'' ?>>
+            <input class="form-check-input opened-radio" type="radio" name="opened" id="op0_<?= $r['id'] ?>" value="0" <?= $op===0?'checked':'' ?>>
             <label class="form-check-label" for="op0_<?= $r['id'] ?>">ยุบ / รวม / เลิกสถานศึกษาไปแล้ว</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input opened-radio" type="radio" name="opened" id="op2_<?= $r['id'] ?>" value="2" <?= $op===2?'checked':'' ?>>
+            <label class="form-check-label" for="op2_<?= $r['id'] ?>">ขาดคุณสมบัติ (ยังเปิดสอนแต่ไม่เข้าเกณฑ์พื้นที่พิเศษ เช่น มีสะพานเชื่อมแผ่นดินใหญ่)</label>
           </div>
         </div>
 
+        <!-- กรณี ขาดคุณสมบัติ: ระบุเหตุผล -->
+        <div class="mb-3 disqualify-box" style="<?= $op===2?'':'display:none' ?>">
+          <label class="form-label fw-bold d-block mb-1">เหตุผลที่ขาดคุณสมบัติ</label>
+          <input class="form-control" name="disqualify_reason" maxlength="255" value="<?= View::e($r['disqualify_reason'] ?? '') ?>" placeholder="เช่น มีสะพานเชื่อมกับแผ่นดินใหญ่ / ถนนเข้าถึงสะดวกแล้ว">
+        </div>
+
         <!-- กรณี ยุบ / รวม / เลิก -->
-        <div class="mb-3 closed-box" style="<?= ((int)($r['opened']??1)===0)?'':'display:none' ?>">
+        <div class="mb-3 closed-box" style="<?= $op===0?'':'display:none' ?>">
           <label class="form-label fw-bold d-block">ระบุประเภท</label>
           <?php $ct = (int)($r['close_type'] ?? 0); foreach (SchoolConfirm::CLOSE_TYPES as $cv => $cl): ?>
           <div class="form-check">
@@ -118,8 +129,8 @@ $tabAreas = \App\Services\SchoolMenu::current()['areas'] ?: [1, 2];
           </div>
         </div>
 
-        <!-- กรณี ยังเปิดทำการเรียนการสอน: กรอกข้อมูลครู/นักเรียน -->
-        <div class="open-box" style="<?= ((int)($r['opened']??1)===0)?'display:none':'' ?>">
+        <!-- กรณี ยังเปิดทำการเรียนการสอน: กรอกข้อมูลครู/นักเรียน (เฉพาะสถานะ "คงอยู่") -->
+        <div class="open-box" style="<?= $op===1?'':'display:none' ?>">
         <hr class="my-3">
         <h3 class="h6 fw-bold mb-2">ข้อมูลโรงเรียน (สำหรับปีงบประมาณ <?= View::e(App::acadYear()) ?>)</h3>
 
@@ -199,9 +210,10 @@ $tabAreas = \App\Services\SchoolMenu::current()['areas'] ?: [1, 2];
         <?php else: ?>
           <div class="nh-row gap-2 wrap">
             <button type="submit" name="action" value="save" class="btn btn-outline-primary"><?= nh_icon('checkCircle', 15) ?> บันทึกข้อมูล (ร่าง)</button>
-            <button type="submit" name="action" value="submit" class="btn btn-primary"
+            <button type="submit" name="action" value="submit" class="btn btn-primary js-submit-confirm"
                     onclick="return confirm('ยืนยันการส่งข้อมูล? เมื่อส่งแล้วจะแก้ไขไม่ได้จนกว่าเขตจะปลดล็อก');"><?= nh_icon('shieldCheck', 15) ?> ส่งข้อมูล</button>
           </div>
+          <div class="text-danger small mt-1 js-submit-hint" style="display:none"><?= nh_icon('alertCircle', 14) ?> ต้องกรอก “จำนวนนักเรียนรวม” และ “จำนวนครูและผู้บริหารรวม” ให้มากกว่า 0 ก่อนจึงจะส่งได้ (บันทึกร่างได้)</div>
           <div class="text-muted small mt-1">บันทึกร่างไว้ก่อน แล้วกลับมาแก้ไข/อัปโหลดเพิ่มได้ — กด “ส่งข้อมูล” เมื่อครบถ้วน</div>
         <?php endif; ?>
       </form>
@@ -233,15 +245,17 @@ $tabAreas = \App\Services\SchoolMenu::current()['areas'] ?: [1, 2];
   try { if (localStorage.getItem('nh-confirm-legend') === '0') set(false); } catch (e) {}
 })();
 
-// สลับฟอร์มตามสถานะ: เปิดอยู่ → กรอกครู/นักเรียน | ยุบ/เลิก → เลือกประเภท
+// สลับฟอร์มตามสถานะ: '1' คงอยู่ → กรอกครู/นักเรียน | '0' ยุบ/รวม/เลิก → เลือกประเภท | '2' ขาดคุณสมบัติ → ระบุเหตุผล
 document.querySelectorAll('.opened-radio').forEach(function (el) {
   el.addEventListener('change', function () {
     var form = this.closest('form');
-    var closed = (this.value === '0');
+    var v = this.value;
     var openBox = form.querySelector('.open-box');
     var closedBox = form.querySelector('.closed-box');
-    if (openBox)   openBox.style.display   = closed ? 'none' : '';
-    if (closedBox) closedBox.style.display = closed ? '' : 'none';
+    var dqBox = form.querySelector('.disqualify-box');
+    if (openBox)   openBox.style.display   = (v === '1') ? '' : 'none';
+    if (closedBox) closedBox.style.display = (v === '0') ? '' : 'none';
+    if (dqBox)     dqBox.style.display     = (v === '2') ? '' : 'none';
   });
 });
 
@@ -264,7 +278,7 @@ document.querySelectorAll('input.tel-fmt').forEach(function (inp) {
   });
 });
 
-// รวมจำนวนนักเรียน/ครู อัตโนมัติ (แยกตามแต่ละฟอร์ม)
+// รวมจำนวนนักเรียน/ครู อัตโนมัติ + คุมปุ่ม “ส่งข้อมูล” ตามความครบถ้วน (แยกตามแต่ละฟอร์ม)
 document.querySelectorAll('form').forEach(function (form) {
   function sumInto(inSel, totalSel) {
     var total = form.querySelector(totalSel);
@@ -273,13 +287,32 @@ document.querySelectorAll('form').forEach(function (form) {
     form.querySelectorAll(inSel).forEach(function (i) { t += parseInt(i.value, 10) || 0; });
     total.value = t;
   }
+  var submitBtn = form.querySelector('.js-submit-confirm');
+  var hint = form.querySelector('.js-submit-hint');
+  function isOpened() {
+    var r = form.querySelector('.opened-radio:checked');
+    return !r || r.value === '1';   // ค่าเริ่มต้น = คงอยู่
+  }
+  function num(sel) { var e = form.querySelector(sel); return e ? (parseInt(e.value, 10) || 0) : 0; }
+  function checkComplete() {
+    if (!submitBtn) return;
+    // โรงเรียนคงอยู่: ต้องมีนักเรียนรวม > 0 และครูรวม > 0 ; ยุบ/รวม/เลิก: ส่งได้เลย
+    var ok = !isOpened() || (num('.std-total') > 0 && num('.tch-total') > 0);
+    submitBtn.disabled = !ok;
+    if (hint) hint.style.display = ok ? 'none' : '';
+  }
   function recalc() {
     sumInto('.std-in', '.std-total');
     sumInto('.tch-in', '.tch-total');
+    checkComplete();
   }
   form.querySelectorAll('.std-in, .tch-in').forEach(function (i) {
     i.addEventListener('input', recalc);
   });
+  form.querySelectorAll('.opened-radio').forEach(function (r) {
+    r.addEventListener('change', checkComplete);
+  });
+  checkComplete();   // ตรวจตอนโหลด
 });
 </script>
 </div><!-- /.container -->

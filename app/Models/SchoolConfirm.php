@@ -17,9 +17,24 @@ class SchoolConfirm
     public const CLOSE_TYPES = [1 => 'โรงเรียนยุบ', 2 => 'โรงเรียนเลิก', 3 => 'โรงเรียนเรียนรวม'];
     public const CLOSE_MERGE = 3;   // เรียนรวม → ระบุรหัส/ชื่อโรงเรียนที่ไปยุบรวมด้วย
 
+    /** สถานะการคงอยู่ (opened) — 3 สถานะ */
+    public const OPENED_YES          = 1;   // คงอยู่ (ยังเปิดสอน + เข้าเกณฑ์พื้นที่พิเศษ)
+    public const OPENED_CLOSED       = 0;   // ยุบ/รวม/เลิก (ดู close_type)
+    public const OPENED_DISQUALIFIED = 2;   // ขาดคุณสมบัติ (ยังเปิดสอนแต่ไม่เข้าเกณฑ์ เช่น มีสะพาน)
+
     public static function closeTypeLabel(int $t): string
     {
         return self::CLOSE_TYPES[$t] ?? '-';
+    }
+
+    /** ป้ายสถานะการคงอยู่แบบสั้น (badge/รายการ/Excel) — ใช้ร่วมทุกที่ให้ 3 สถานะตรงกัน */
+    public static function openedLabel(int $opened): string
+    {
+        return [
+            self::OPENED_YES          => 'คงอยู่',
+            self::OPENED_CLOSED       => 'ยุบ/รวม/เลิก',
+            self::OPENED_DISQUALIFIED => 'ขาดคุณสมบัติ',
+        ][$opened] ?? 'คงอยู่';
     }
 
     public static function areaLabel(int $a): string
@@ -42,7 +57,7 @@ class SchoolConfirm
     }
 
     /** รายการสำหรับเขต/สพฐ. (กรอง area + สังกัด + จังหวัด + สถานะ) */
-    public static function listFor(int $area, int $year, ?int $saoId, array $f = []): array
+    public static function listFor(int $area, int $year, ?int $saoId, array $f = [], int $limit = 2000): array
     {
         $sql = 'SELECT * FROM school_confirm WHERE acadyears = ? AND area_type = ?';
         $p = [$year, $area];
@@ -51,8 +66,72 @@ class SchoolConfirm
         if (isset($f['sao_status']) && $f['sao_status'] !== '') { $sql .= ' AND sao_status = ?'; $p[] = (int) $f['sao_status']; }
         if (isset($f['confirmed']) && $f['confirmed'] !== '') { $sql .= ' AND school_confirmed = ?'; $p[] = (int) $f['confirmed']; }
         if (!empty($f['q'])) { $sql .= ' AND (sc_name LIKE ? OR sc_id LIKE ?)'; $p[] = '%' . $f['q'] . '%'; $p[] = '%' . $f['q'] . '%'; }
-        $sql .= ' ORDER BY provinces, sc_name LIMIT 2000';
+        $sql .= ' ORDER BY provinces, sc_name LIMIT ' . max(1, $limit);
         return Db::all($sql, $p);
+    }
+
+    /**
+     * รายชื่อโรงเรียนเดิม (roster) ที่ "ยืนยันแล้ว" (school_confirmed=1) สำหรับออกบัญชีแนบท้าย Word
+     * JOIN master_sao (ชื่อเขต), school_new (ตำบล/อำเภอ/จังหวัดจริง), master_school (จังหวัดสำรอง)
+     * @param int|null $saoId null = ทุกเขต (สพฐ.)
+     *
+     * หมายเหตุประสิทธิภาพ: c.sc_id เป็น BIGINT แต่ school_new.sc_id/master_school.sc_id เป็น VARCHAR
+     * ถ้า join ตรง ๆ (s.sc_id = c.sc_id) DB จะแปลง VARCHAR→ตัวเลข ทำให้ index ใช้ไม่ได้ →
+     * full-scan ทั้งสองตาราง (~28k + 30k แถว) ทุกครั้งที่โหลด (ช้ามากบน production) ; จึง cast ฝั่ง
+     * c.sc_id ให้ตรงชนิด/collation ของ index ปลายทาง:
+     *   school_new  (sc_id utf8mb4) → CAST(... AS CHAR)      ใช้ PRIMARY (eq_ref)
+     *   master_school(sc_id utf8mb3) → CONVERT(... USING utf8) ใช้ idx_sc_id (utf8mb3_general_ci)
+     * ใช้ชื่อ charset "utf8" (ไม่ใช่ "utf8mb3") เพราะ production = MariaDB 10.4 ยังไม่รู้จักชื่อ
+     * "utf8mb3" (มีตั้งแต่ 10.6) → จะ error "Unknown character set" ; "utf8" ใช้ได้ทั้ง MariaDB/MySQL 8
+     * และให้ charset 3 ไบต์ตรงกับ collation ของ index master_school เหมือนกัน
+     */
+    public static function listConfirmedForAppendix(int $area, int $year, ?int $saoId): array
+    {
+        // "ระดับความยุ่งยากเดิม" ของโรงเรียนในบัญชี — ดึงจากผลประเมิน (legacy) ปีก่อนหน้าปีปัจจุบัน
+        // ที่จัดกลุ่มไว้แล้ว (type >= 1) โดยเอาปีล่าสุด ; แหล่งข้อมูลต่างกันตามพื้นที่:
+        //   พื้นที่สูง → highland_eval.highland_type, พื้นที่เกาะ → island_eval.island_type
+        // ใช้ GROUP_CONCAT(... ORDER BY acadyears DESC) + SUBSTRING_INDEX เพื่อให้ได้ค่าจากปีล่าสุด
+        // และการันตี 1 แถวต่อ 1 โรงเรียน (eval เดิมไม่มี UNIQUE key จึงอาจมีแถวซ้ำ)
+        // $evalTable/$typeCol เลือกจาก $area (1/2) แบบ whitelist — ไม่ใช่ค่าจากผู้ใช้ จึงต่อสตริงได้ปลอดภัย
+        $evalTable = $area === self::AREA_ISLAND ? 'island_eval'  : 'highland_eval';
+        $typeCol   = $area === self::AREA_ISLAND ? 'island_type'  : 'highland_type';
+
+        $sql = "SELECT c.sc_id, c.sc_name, c.provinces, c.opened, c.close_type, c.merged_to_name, c.disqualify_reason, c.sao_id,
+                       o.sao_name,
+                       s.subdistrict, s.district, s.province,
+                       m.provinces AS m_provinces,
+                       d.diff_level
+                  FROM school_confirm c
+             LEFT JOIN master_sao o     ON o.sao_id = c.sao_id
+             LEFT JOIN school_new s     ON s.sc_id  = CAST(c.sc_id AS CHAR)
+             LEFT JOIN master_school m  ON m.sc_id  = CONVERT(c.sc_id USING utf8)
+             LEFT JOIN (
+                    SELECT sc_id,
+                           SUBSTRING_INDEX(GROUP_CONCAT($typeCol ORDER BY acadyears DESC), ',', 1) AS diff_level
+                      FROM $evalTable
+                     WHERE acadyears < ? AND $typeCol >= 1
+                     GROUP BY sc_id
+                   ) d ON d.sc_id = c.sc_id
+                 WHERE c.acadyears = ? AND c.area_type = ? AND c.school_confirmed = 1";
+        $p = [$year, $year, $area];
+        if ($saoId !== null) { $sql .= ' AND c.sao_id = ?'; $p[] = $saoId; }
+        $sql .= ' ORDER BY o.sao_name, s.province, s.district, s.subdistrict, c.sc_name LIMIT 20000';
+        return Db::all($sql, $p);
+    }
+
+    /**
+     * รหัสโรงเรียน (sc_id) ที่ "ออกจากโครงการ" ตาม roster การคงอยู่ —
+     * opened=0 (ยุบ/รวม/เลิก) หรือ opened=2 (ขาดคุณสมบัติ)
+     * ใช้กรองออกจากบัญชีแนบท้ายผลคัดกรอง (โรงเรียนที่เสียคุณสมบัติแล้ว ไม่ควรอยู่ในรายชื่อทางการ)
+     * @return string[] sc_id เป็นสตริง (ให้เทียบกับ eval.sc_id ที่เป็น INT ได้ผ่าน (string) cast)
+     */
+    public static function leavingScIds(int $area, int $year): array
+    {
+        $rows = Db::all(
+            'SELECT sc_id FROM school_confirm WHERE acadyears = ? AND area_type = ? AND opened IN (0, 2)',
+            [$year, $area]
+        );
+        return array_map('strval', array_column($rows, 'sc_id'));
     }
 
     public static function stats(int $area, int $year, ?int $saoId): array
@@ -60,7 +139,8 @@ class SchoolConfirm
         $sql = 'SELECT COUNT(*) total,
                        SUM(school_confirmed=1) confirmed,
                        SUM(sao_status=1) approved,
-                       SUM(opened=0) closed
+                       SUM(opened=0) closed,
+                       SUM(opened=2) disqualified
                   FROM school_confirm WHERE acadyears = ? AND area_type = ?';
         $p = [$year, $area];
         if ($saoId !== null) { $sql .= ' AND sao_id = ?'; $p[] = $saoId; }
@@ -73,11 +153,12 @@ class SchoolConfirm
      */
     public static function schoolConfirm(
         int $id, int $opened, ?int $mergeStatus, ?int $mergedTo, string $note,
-        array $profile = [], int $closeType = 0, string $mergedToName = '', bool $submit = false
+        array $profile = [], int $closeType = 0, string $mergedToName = '', bool $submit = false,
+        string $disqualifyReason = ''
     ): void
     {
-        $cols = ['close_type = ?', 'merged_to_name = ?'];
-        $vals = [$closeType, mb_substr(trim($mergedToName), 0, 255)];
+        $cols = ['close_type = ?', 'merged_to_name = ?', 'disqualify_reason = ?'];
+        $vals = [$closeType, mb_substr(trim($mergedToName), 0, 255), mb_substr(trim($disqualifyReason), 0, 255)];
         foreach (self::PROFILE_TEXT_FIELDS as $f) {
             $cols[] = "$f = ?";
             $vals[] = mb_substr(trim((string) ($profile[$f] ?? '')), 0, 150);
@@ -145,10 +226,12 @@ class SchoolConfirm
     public static function eligibleProvinces(int $area, int $year): array
     {
         // ใช้ school_new.province เป็นแหล่งจังหวัดหลัก (master_school.provinces ว่างในหลายแถว)
+        // CAST c.sc_id (BIGINT) → CHAR ให้ตรงชนิด PK ของ school_new.sc_id (VARCHAR) มิฉะนั้น
+        // index ใช้ไม่ได้ → full-scan school_new (~28k แถว) ดูหมายเหตุใน listConfirmedForAppendix()
         $rows = Db::all(
             "SELECT DISTINCT s.province AS p
                FROM school_confirm c
-               JOIN school_new s ON s.sc_id = c.sc_id
+               JOIN school_new s ON s.sc_id = CAST(c.sc_id AS CHAR)
               WHERE c.area_type = ? AND c.acadyears = ? AND s.province <> ''
               ORDER BY s.province",
             [$area, $year]
