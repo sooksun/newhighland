@@ -7,6 +7,7 @@ use App\Core\Csrf;
 use App\Core\Request;
 use App\Core\View;
 use App\Models\HighlandEval;
+use App\Models\SystemStatus;
 use App\Services\SchoolContext;
 
 /** ส่วนที่ 1 (1B): ปักหมุด + วัดความสูง/ระยะทาง (พอร์ตจาก ssar_search.php / ssar_elevation.php) */
@@ -42,6 +43,7 @@ class MapController
         Csrf::verify();
         $scId = (int) Request::post('sc_id', 0);
         if (!$scId || !Auth::canAccessSchool($scId)) View::json(['error' => 'forbidden'], 403);
+        if (Auth::isSchool() && !SystemStatus::isOpen()) View::json(['error' => SystemStatus::closedMessage()], 423);
 
         SchoolContext::savePin(
             $scId,
@@ -71,6 +73,7 @@ class MapController
         Csrf::verify();
         $scId = (int) Request::post('sc_id', 0);
         if (!$scId || !Auth::canAccessSchool($scId)) View::json(['error' => 'forbidden'], 403);
+        if (Auth::isSchool() && !SystemStatus::isOpen()) View::json(['error' => SystemStatus::closedMessage()], 423);
 
         $year      = App::acadYear();
         $highest   = (float) Request::post('highest', 0);

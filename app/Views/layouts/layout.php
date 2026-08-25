@@ -32,6 +32,10 @@ $navLinks[] = ['confirm', 'รับรองการคงอยู่', 'shie
 if (in_array($role, ['sao', 'admin'], true)) {
   $navLinks[] = ['admin/users', 'จัดการผู้ใช้', 'users', ['admin']];
 }
+// ปิด-เปิดระบบการคัดกรอง — เฉพาะ สพฐ. (admin)
+if ($role === 'admin') {
+  $navLinks[] = ['admin/system', 'ปิด-เปิดระบบ', 'zap', ['admin/system']];
+}
 
 // auto menu filter: โรงเรียน/เขต เห็นเฉพาะเมนูที่ตรงคุณสมบัติ (กันลงข้อมูลผิดประเภท); สพฐ. เห็นครบ
 // 'admin/users' เป็นเมนูจัดการข้ามพื้นที่ — คงไว้เสมอสำหรับเขต (ไม่ถูกกรองออกแม้ไม่อยู่ใน nav ที่แคชไว้)
@@ -111,6 +115,12 @@ $navIsActive = function (string $path, array $matches) use ($curPath, $seg, $onC
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="ปิด"></button>
       </div>
     <?php endforeach; ?>
+    <?php if ($role === 'school' && !\App\Models\SystemStatus::isOpen()): ?>
+      <div class="alert alert-warning d-flex align-items-start gap-2" role="alert">
+        <?= nh_icon('alertTri', 20) ?>
+        <div class="grow"><strong>ระบบปิดรับข้อมูลชั่วคราว</strong> — <?= View::e(\App\Models\SystemStatus::closedMessage()) ?> (ดูข้อมูลเดิมได้ตามปกติ)</div>
+      </div>
+    <?php endif; ?>
   </div>
   <?= $content ?>
 </main>

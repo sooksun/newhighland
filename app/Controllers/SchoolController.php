@@ -10,6 +10,7 @@ use App\Core\View;
 use App\Models\MasterSao;
 use App\Models\MasterSchool;
 use App\Models\SchoolConfirm;
+use App\Models\SystemStatus;
 
 /** ส่วนที่ 1 (1A): เลือกสังกัด → เลือกโรงเรียน → เริ่มประเมิน */
 class SchoolController
@@ -75,6 +76,10 @@ class SchoolController
     {
         Auth::require();
         Csrf::verify();
+        if (Auth::isSchool() && !SystemStatus::isOpen()) {
+            Flash::error(SystemStatus::closedMessage());
+            App::redirect('highland');
+        }
 
         $scId = (int) Request::post('sc_id', 0);
         if (!$scId || !Auth::canAccessSchool($scId)) {

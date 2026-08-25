@@ -74,9 +74,11 @@ $tabs = [
 
 <?php
 // ช่องอัปโหลดเอกสาร/ภาพแนบ + ลิงก์ไฟล์เดิม
-$refdoc = function (string $nn) use ($e) {
+$refdoc = function (string $nn, ?string $label = null) use ($e) {
     $cur = $e["citeria{$nn}_refdoc"] ?? '';
-    $h = '<div class="mt-2"><label class="form-label small text-muted">แนบเอกสาร/ภาพ (pdf/jpg/png)</label>'
+    $labelText  = $label ?? 'แนบเอกสาร/ภาพ (pdf/jpg/png)';
+    $labelClass = $label !== null ? 'form-label small text-danger' : 'form-label small text-muted';
+    $h = '<div class="mt-2"><label class="' . $labelClass . '">' . View::e($labelText) . '</label>'
        . '<input type="file" class="form-control form-control-sm" name="refdoc_' . $nn . '" accept=".pdf,.jpg,.jpeg,.png">';
     if ($cur !== '') {
         $h .= '<a class="small d-inline-block mt-1" target="_blank" href="' . View::e(App::url($cur)) . '">📎 ไฟล์ที่แนบไว้</a>';
@@ -217,7 +219,13 @@ $refdoc = function (string $nn) use ($e) {
           <div class="col-md-4"><label class="form-label fw-bold">14. จำนวนนักเรียนพักนอน</label><input type="number" class="form-control" name="citeria14" value="<?= $num('citeria14') ?>"></div>
           <div class="col-md-4"><label class="form-label fw-bold">15. จำนวนโรงเรียนสาขา/ห้องเรียนสาขา</label><input type="number" class="form-control" name="citeria15" value="<?= $num('citeria15') ?>"><?= $refdoc('15') ?></div>
         </div>
-        <div class="mb-2"><label class="form-label fw-bold">16. เป็นโรงเรียนพื้นที่พิเศษตามประกาศกระทรวงการคลัง</label><?= $radio('citeria16', $options['16'], $e['citeria16'] ?? 0) ?><?= $refdoc('16') ?></div>
+        <div class="mb-4"><label class="form-label fw-bold">16. เป็นโรงเรียนพื้นที่พิเศษตามประกาศกระทรวงการคลัง</label><?= $radio('citeria16', $options['16'], $e['citeria16'] ?? 0) ?><?= $refdoc('16', 'แนบหนังสือรับรอง จากประธานคณะกรรมการสถานศึกษา (pdf/jpg/png)') ?></div>
+        <div class="mb-2">
+          <label class="form-label fw-bold" for="screen_reason">เหตุผลที่ขอคัดกรองครั้งนี้</label>
+          <textarea class="form-control" id="screen_reason" name="screen_reason" rows="3" maxlength="255"
+                    placeholder="ระบุเหตุผลสั้น ๆ (ไม่เกิน 255 ตัวอักษร)"><?= View::e($e['screen_reason'] ?? '') ?></textarea>
+          <div class="form-text text-muted">ความยาวไม่เกิน 255 ตัวอักษร</div>
+        </div>
       </div></div>
     </div>
 

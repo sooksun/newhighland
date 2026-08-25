@@ -11,6 +11,7 @@ use App\Models\CriteriaOption;
 use App\Models\Hilltrib;
 use App\Models\HighlandEval;
 use App\Models\SaoNew;
+use App\Models\SystemStatus;
 use App\Services\ScoreService;
 use App\Services\SchoolContext;
 
@@ -94,6 +95,10 @@ class HighlandEvalController
         Csrf::verify();
         $scId = (int) Request::post('sc_id', 0);
         $this->guard($scId);
+        if (Auth::isSchool() && !SystemStatus::isOpen()) {
+            Flash::error(SystemStatus::closedMessage());
+            App::redirect('highland/eval?sc_id=' . $scId);
+        }
 
         $eval = HighlandEval::find($scId, $this->year) ?? [];
 
@@ -134,6 +139,8 @@ class HighlandEvalController
             'citeria14'    => (int) Request::post('citeria14', 0),
             'citeria15'    => (int) Request::post('citeria15', 0),
             'citeria16'    => (int) Request::post('citeria16', 0),
+            // เหตุผลที่ขอคัดกรองครั้งนี้ (จำกัด 255 ตัวอักษร)
+            'screen_reason'=> mb_substr(trim((string) Request::post('screen_reason', '')), 0, 255),
         ];
         $form['stu_sum']       = $form['stu_kinder'] + $form['stu_prim'] + $form['stu_second'] + $form['stu_high'];
         $form['stu_sleep_sum'] = $form['stu_sleep_boy'] + $form['stu_sleep_girl'];
@@ -163,6 +170,7 @@ class HighlandEvalController
         Csrf::verify();
         $scId = (int) Request::post('sc_id', 0);
         $this->guard($scId);
+        if (Auth::isSchool() && !SystemStatus::isOpen()) View::json(['error' => SystemStatus::closedMessage()], 423);
         $ethnic = (int) Request::post('hilltrib', 0);
         $num    = (int) Request::post('hilltrib_number', 0);
         if ($ethnic > 0) {
@@ -179,6 +187,7 @@ class HighlandEvalController
         Csrf::verify();
         $scId = (int) Request::post('sc_id', 0);
         $this->guard($scId);
+        if (Auth::isSchool() && !SystemStatus::isOpen()) View::json(['error' => SystemStatus::closedMessage()], 423);
         HighlandEval::deleteHilltrib($scId, $this->year, (int) Request::post('hilltrib', 0));
         $this->recompute($scId);
         View::json($this->hilltribState($scId));
