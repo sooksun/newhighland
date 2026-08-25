@@ -102,13 +102,14 @@ $backQs = http_build_query(array_filter($filters, fn($x) => $x !== '' && $x !== 
         </td>
         <?php if ($isAdmin): $sp = (int) ($r['spt_commit'] ?? 0); ?>
         <td>
-          <form method="post" action="<?= App::url('highland/cert/spt') ?>" class="d-flex gap-1">
+          <form method="post" action="<?= App::url('highland/cert/spt') ?>" class="d-flex gap-1 align-items-center">
             <?= Csrf::field() ?><input type="hidden" name="sc_id" value="<?= View::e($r['sc_id']) ?>">
             <select name="spt_commit" class="form-select form-select-sm" style="width:auto">
-              <?php foreach ([0 => 'รอ', 1 => 'เห็นชอบ', 2 => 'ไม่เห็นชอบ'] as $k => $v): ?>
+              <?php foreach ([0 => 'รอ', 1 => 'เป็นโรงเรียนพื้นที่ลักษณะพิเศษ', 2 => 'ไม่เป็นโรงเรียนพื้นที่ลักษณะพิเศษ'] as $k => $v): ?>
                 <option value="<?= $k ?>" <?= $sp === $k ? 'selected' : '' ?>><?= $v ?></option>
               <?php endforeach; ?>
             </select>
+            <input name="spt_comment" class="form-control form-control-sm" style="width:140px" value="<?= View::e($r['spt_comment'] ?? '') ?>" placeholder="หมายเหตุ">
             <button class="btn btn-sm btn-outline-secondary">บันทึก</button>
           </form>
         </td>
@@ -118,6 +119,9 @@ $backQs = http_build_query(array_filter($filters, fn($x) => $x !== '' && $x !== 
           <a class="btn btn-sm btn-ghost" href="<?= App::url('map/elevation?sc_id=' . $r['sc_id']) ?>" title="วัดความสูง/ระยะ"><?= nh_icon('ruler', 16) ?></a>
           <a class="btn btn-sm btn-ghost" href="<?= App::url('highland/eval?sc_id=' . $r['sc_id']) ?>" title="เปิดแบบประเมิน"><?= nh_icon('clipboard', 16) ?></a>
           <a class="btn btn-sm btn-ghost" href="<?= App::url('highland/print?sc_id=' . $r['sc_id']) ?>" title="พิมพ์ผล" target="_blank"><?= nh_icon('printer', 16) ?></a>
+          <?php if (!empty($r['citeria16_refdoc'])): ?>
+          <a class="btn btn-sm btn-ghost" href="<?= App::url($r['citeria16_refdoc']) ?>" target="_blank" title="ดาวน์โหลด: แนบหนังสือรับรอง จากประธานคณะกรรมการสถานศึกษา">📎</a>
+          <?php endif; ?>
         </td>
       </tr>
     <?php endforeach; ?>

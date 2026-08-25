@@ -41,15 +41,35 @@
         'csrf'    => Csrf::token(),
     ], JSON_UNESCAPED_UNICODE) ?>;
 
-    let map, infowindow, elevator;
+    let map, infowindow, elevator, marker;
 
     function initMap() {
       const center = {lat: CFG.lat0, lng: CFG.lng0};
       map = new google.maps.Map(document.getElementById('map'), {
-        center, zoom: 16, mapTypeId: 'satellite'
+        center, zoom: 16, mapTypeId: 'satellite',
+        streetViewControl: true,   // เปิด Street View (ลาก pegman ลงบนถนนเพื่อดูภาพถนน)
+        // ปุ่มสลับมุมมอง: แผนที่ / ดาวเทียม / ผสม / ภูมิประเทศ
+        mapTypeControl: true,
+        mapTypeControlOptions: {
+          style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+          mapTypeIds: ['roadmap', 'satellite', 'hybrid', 'terrain']
+        }
       });
       elevator = new google.maps.ElevationService();
       infowindow = new google.maps.InfoWindow();
+      // จุดแดง — ตำแหน่งอาคาร/โรงเรียนที่เลือกไว้ปัจจุบัน
+      marker = new google.maps.Marker({
+        map,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 9,
+          fillColor: '#d32f2f',
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 2,
+        },
+        zIndex: 999,
+      });
 
       // search box
       const input = document.getElementById('pac-input');
@@ -75,6 +95,7 @@
         const lng = (typeof location.lng === 'function') ? location.lng() : location.lng;
         let high = 0;
         if (status === 'OK' && results[0]) high = results[0].elevation;
+        marker.setPosition({lat, lng});
         infowindow.setPosition({lat, lng});
         const html = `
           <div style="min-width:230px">
