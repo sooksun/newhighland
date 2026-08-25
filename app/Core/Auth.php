@@ -20,8 +20,11 @@ class Auth
     {
         $username = trim($username);
 
-        // 1) โรงเรียน
-        $u = Db::one(
+        // admin_users ต้องตรวจ master_saonew ก่อนเสมอ (กัน username ซ้ำกับตาราง user)
+        $isAdminCandidate = in_array($username, (array) App::config('admin_users'), true);
+
+        // 1) โรงเรียน — ข้ามถ้าเป็น admin candidate
+        $u = $isAdminCandidate ? null : Db::one(
             'SELECT citicens_id, name, sc_id, sao_id FROM `user` WHERE `user` = ? AND `password` = ? LIMIT 1',
             [$username, $password]
         );
