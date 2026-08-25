@@ -17,11 +17,15 @@ if (!empty($computedAt)) {
 }
 
 // ---- KPI ----
-$target = (int) $targets['total'];
+// "เป้าหมาย" = โรงเรียนที่ยังคงอยู่จริง (ตัด ยุบ/รวม/เลิก + ขาดคุณสมบัติ ออกจาก roster เดิม)
+$rosterTotal  = (int) ($targets['total'] ?? 0);
+$rosterClosed = (int) ($targets['closed'] ?? 0);
+$rosterDq     = (int) ($targets['disqualified'] ?? 0);
+$target       = (int) ($targets['active'] ?? $rosterTotal);
 $done   = (int) $kpi['done'];
 $kpiCards = [
   ['ti' => 'school',    'tone' => 'primary', 'label' => 'โรงเรียนเป้าหมาย', 'n' => $target,
-   'sub' => 'สูง ' . number_format($targets['high']) . ' · เกาะ ' . number_format($targets['island'])],
+   'sub' => 'สูง ' . number_format((int) ($targets['high_active'] ?? $targets['high'])) . ' · เกาะ ' . number_format((int) ($targets['island_active'] ?? $targets['island']))],
   ['ti' => 'clipboard', 'tone' => 'emerald', 'label' => 'ดำเนินการแล้ว', 'n' => $done,
    'sub' => $pct($done, $target) . '% ของเป้าหมาย'],
   ['ti' => 'award',     'tone' => 'island',  'label' => 'ผ่านเกณฑ์พิเศษ', 'n' => (int) $kpi['passed'],
@@ -91,6 +95,22 @@ $pinData = array_map(fn($r) => [
   'score' => (float) $r['sum_score'],
 ], $pins);
 
+// ---- วิเคราะห์สถิติ (U1 พรรณนา / B2 ปัจจัย→คะแนน / B4 ค่าเฉลี่ยข้ามระดับ) ----
+$stats = $stats ?? ['n' => 0, 'descriptive' => [], 'corr' => [], 'groupMeans' => ['counts' => [0,0,0,0], 'rows' => []]];
+$stN   = (int) ($stats['n'] ?? 0);
+$gmCounts = $stats['groupMeans']['counts'] ?? [0,0,0,0];
+// สีของแท่ง correlation: เขียว=บวกแรง, ฟ้า=บวกปานกลาง, ส้ม=ลบอ่อน, แดง=ลบ(≥0.3)
+$corrLabels = array_map(fn($c) => $c['label'], $stats['corr']);
+$corrData   = array_map(fn($c) => $c['r'], $stats['corr']);
+$corrColors = array_map(function ($c) {
+    $r = $c['r'];
+    if ($r >= 0.5)  return '#1D9E75';
+    if ($r >= 0.3)  return '#378ADD';
+    if ($r >= 0)    return '#B4B2A9';
+    if ($r <= -0.3) return '#E24B4A';
+    return '#EF9F27';
+}, $stats['corr']);
+
 $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
 ?>
 <div class="container">
@@ -103,9 +123,27 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APO
       <span class="badge badge-neutral"><?= $isAdmin ? 'ทุกเขต' : View::e(Auth::saoName()) ?></span>
     </div>
     <div class="d-flex flex-wrap align-items-center gap-2">
+      <?php if (!empty($years) && count($years) > 1): ?>
+      <form method="get" action="<?= App::url('report') ?>" class="d-inline-flex align-items-center gap-1">
+        <input type="hidden" name="area" value="<?= (int) $area ?>">
+        <label class="text-muted small mb-0" for="yearSel"><?= nh_icon('calendar', 13) ?> ปี</label>
+        <select id="yearSel" name="year" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+          <?php foreach ($years as $yy): ?>
+            <option value="<?= (int) $yy ?>" <?= (int) $yy === (int) $year ? 'selected' : '' ?>><?= (int) $yy ?></option>
+          <?php endforeach; ?>
+        </select>
+      </form>
+      <?php endif; ?>
       <span class="text-muted small d-inline-flex align-items-center gap-1" title="ค่าที่ประมวลผลไว้ล่าสุด"><?= nh_icon('clock', 14) ?> ข้อมูล ณ <?= View::e($asOf) ?></span>
       <a class="btn btn-sm btn-primary" href="<?= View::e($refreshUrl ?? App::url('report?area=' . $area . '&refresh=1')) ?>" title="คำนวณค่าล่าสุดแบบ real-time แล้วบันทึกไว้"><?= nh_icon('refresh', 15) ?> ประมวลผลใหม่</a>
-      <a class="btn btn-sm btn-outline-secondary" href="<?= App::url('report/export?area=' . $area) ?>"><?= nh_icon('fileText', 15) ?> Export CSV</a>
+      <a class="btn btn-sm btn-outline-secondary" href="<?= App::url('report/export?area=' . $area . '&year=' . (int) $year) ?>"><?= nh_icon('fileText', 15) ?> Export CSV (สรุป)</a>
+      <a class="btn btn-sm btn-outline-success" href="<?= App::url('report/export/xlsx?year=' . (int) $year) ?>" title="ส่งออกรายการประเมิน+รับรองรายโรงเรียนทุกแถว (4 ชีต: ประเมินพื้นที่สูง/เกาะ, รับรองคงอยู่พื้นที่สูง/เกาะ)"><?= nh_icon('fileText', 15) ?> Export Excel (รายงานการคัดกรอง+รับรอง)</a>
+      <a class="btn btn-sm btn-outline-primary" href="<?= App::url('report/word?area=1&year=' . (int) $year) ?>" title="บัญชีแนบท้าย 1 — รายชื่อโรงเรียนพื้นที่สูงที่เข้าเกณฑ์ แบ่งตามสำนักงานเขตพื้นที่ (Word)"><?= nh_icon('fileText', 15) ?> แนบท้าย 1 (พื้นที่สูง)</a>
+      <a class="btn btn-sm btn-outline-primary" href="<?= App::url('report/word?area=2&year=' . (int) $year) ?>" title="บัญชีแนบท้าย 2 — รายชื่อโรงเรียนพื้นที่เกาะที่เข้าเกณฑ์ แบ่งตามสำนักงานเขตพื้นที่ (Word)"><?= nh_icon('fileText', 15) ?> แนบท้าย 2 (พื้นที่เกาะ)</a>
+<?php if ($isAdmin): ?>
+      <a class="btn btn-sm btn-outline-dark" href="<?= App::url('report/full?year=' . (int) $year) ?>" target="_blank" rel="noopener" title="รายงานผลการประเมินฉบับเต็มทุกมิติ (กราฟ+ตัวเลข+คำบรรยาย) เป็นหน้า HTML เดี่ยว เปิดออฟไลน์/พิมพ์เป็น PDF ได้"><?= nh_icon('fileText', 15) ?> รายงานฉบับเต็ม (HTML)</a>
+      <a class="btn btn-sm btn-outline-dark" href="<?= App::url('report/full?download=1&year=' . (int) $year) ?>" title="ดาวน์โหลดรายงานฉบับเต็มเป็นไฟล์ .html"><?= nh_icon('fileText', 15) ?> ดาวน์โหลด .html</a>
+<?php endif; ?>
     </div>
   </div>
 
@@ -114,8 +152,8 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APO
 
   <?php if (count($areas) > 1): ?>
   <ul class="nav nav-pills mb-3">
-    <li class="nav-item"><a class="nav-link <?= $area === 1 ? 'active' : '' ?>" href="<?= App::url('report?area=1') ?>">พื้นที่สูง</a></li>
-    <li class="nav-item"><a class="nav-link <?= $area === 2 ? 'active' : '' ?>" href="<?= App::url('report?area=2') ?>">พื้นที่เกาะ</a></li>
+    <li class="nav-item"><a class="nav-link <?= $area === 1 ? 'active' : '' ?>" href="<?= App::url('report?area=1&year=' . (int) $year) ?>">พื้นที่สูง</a></li>
+    <li class="nav-item"><a class="nav-link <?= $area === 2 ? 'active' : '' ?>" href="<?= App::url('report?area=2&year=' . (int) $year) ?>">พื้นที่เกาะ</a></li>
   </ul>
   <?php endif; ?>
 
@@ -134,6 +172,25 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APO
       </div>
     <?php endforeach; ?>
   </div>
+
+  <!-- สถานะการคงอยู่ของ roster เดิม (คงอยู่ / ยุบ-รวม-เลิก / ขาดคุณสมบัติ) -->
+  <div class="card border-0 shadow-sm mb-3"><div class="card-body py-2">
+    <div class="d-flex flex-wrap align-items-center gap-3 gap-lg-4">
+      <span class="text-muted small fw-bold d-inline-flex align-items-center gap-1"><?= nh_icon('shieldCheck', 14) ?> สถานะการคงอยู่ (จาก roster เดิม)</span>
+      <?php foreach ([
+        ['เป้าหมายตั้งต้น', $rosterTotal, 'secondary'],
+        ['ยังคงอยู่', $target, 'info'],
+        ['ยุบ/รวม/เลิก', $rosterClosed, 'danger'],
+        ['ขาดคุณสมบัติ', $rosterDq, 'warning'],
+      ] as $rc): ?>
+        <span class="d-inline-flex align-items-baseline gap-1">
+          <span class="text-muted small"><?= View::e($rc[0]) ?></span>
+          <span class="fw-bold text-<?= $rc[2] ?>"><?= number_format((int) $rc[1]) ?></span>
+        </span>
+      <?php endforeach; ?>
+      <span class="text-muted" style="font-size:.68rem;">* “เป้าหมาย” = ตัด ยุบ/รวม/เลิก + ขาดคุณสมบัติ ออกแล้ว</span>
+    </div>
+  </div></div>
 
   <!-- Funnel -->
   <div class="card border-0 shadow-sm mb-3"><div class="card-body">
@@ -189,6 +246,100 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APO
       </div>
     <?php endif; ?>
   </div></div>
+
+  <!-- ===== การวิเคราะห์เชิงสถิติ (U1 / B2 / B4) ===== -->
+  <?php if ($stN > 0): ?>
+  <div class="d-flex align-items-center gap-2 mt-4 mb-2">
+    <span class="badge badge-primary"><?= nh_icon('trendUp', 13) ?> การวิเคราะห์เชิงสถิติ</span>
+    <span class="text-muted small">วิเคราะห์จากโรงเรียนที่ประเมินแล้ว <b><?= number_format($stN) ?></b> แห่ง (<?= View::e($areaName) ?> · ปี <?= View::e($year) ?>)</span>
+  </div>
+
+  <!-- U1: สถิติเชิงพรรณนา -->
+  <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+    <div class="text-muted small mb-2"><?= nh_icon('list', 15) ?> สถิติเชิงพรรณนา — ตัวแปรเชิงเดี่ยว (U1)</div>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0" style="font-size:.82rem;">
+        <thead class="table-light"><tr>
+          <th>ตัวแปร</th>
+          <th class="text-center">N</th>
+          <th class="text-end">ค่าเฉลี่ย</th>
+          <th class="text-end">SD</th>
+          <th class="text-end">ต่ำสุด</th>
+          <th class="text-end">Q1</th>
+          <th class="text-end">มัธยฐาน</th>
+          <th class="text-end">Q3</th>
+          <th class="text-end">สูงสุด</th>
+        </tr></thead>
+        <tbody>
+        <?php foreach ($stats['descriptive'] as $d): $oc = !empty($d['outcome']); ?>
+          <tr<?= $oc ? ' style="background:var(--brand-primary-050);font-weight:600;"' : '' ?>>
+            <td><?= View::e($d['label']) ?></td>
+            <td class="text-center text-muted"><?= number_format((int) $d['n']) ?></td>
+            <td class="text-end"><?= $d['mean'] === null ? '-' : number_format($d['mean'], 2) ?></td>
+            <td class="text-end text-muted"><?= $d['sd'] === null ? '-' : number_format($d['sd'], 2) ?></td>
+            <td class="text-end text-muted"><?= $d['min'] === null ? '-' : number_format($d['min'], 2) ?></td>
+            <td class="text-end text-muted"><?= $d['q1'] === null ? '-' : number_format($d['q1'], 2) ?></td>
+            <td class="text-end"><?= $d['median'] === null ? '-' : number_format($d['median'], 2) ?></td>
+            <td class="text-end text-muted"><?= $d['q3'] === null ? '-' : number_format($d['q3'], 2) ?></td>
+            <td class="text-end text-muted"><?= $d['max'] === null ? '-' : number_format($d['max'], 2) ?></td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <div class="text-muted mt-2" style="font-size:.68rem;">* SD = ส่วนเบี่ยงเบนมาตรฐาน (กลุ่มตัวอย่าง) · Q1/Q3 = ควอร์ไทล์ที่ 1/3 · แถวไฮไลต์ = ตัวแปรเป้าหมาย (คะแนนรวม)</div>
+  </div></div>
+
+  <!-- B2: ปัจจัย → คะแนนรวม -->
+  <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+      <div class="text-muted small"><?= nh_icon('trendUp', 15) ?> ปัจจัยที่ส่งผลต่อคะแนนรวม — สหสัมพันธ์ (B2)</div>
+      <div class="d-flex flex-wrap gap-2" style="font-size:.68rem;">
+        <span class="d-inline-flex align-items-center gap-1"><span style="width:9px;height:9px;border-radius:2px;background:#1D9E75;"></span>บวกแรง</span>
+        <span class="d-inline-flex align-items-center gap-1"><span style="width:9px;height:9px;border-radius:2px;background:#378ADD;"></span>บวกปานกลาง</span>
+        <span class="d-inline-flex align-items-center gap-1"><span style="width:9px;height:9px;border-radius:2px;background:#EF9F27;"></span>ลบอ่อน</span>
+        <span class="d-inline-flex align-items-center gap-1"><span style="width:9px;height:9px;border-radius:2px;background:#E24B4A;"></span>ลบ</span>
+      </div>
+    </div>
+    <div style="position:relative;height:<?= max(180, count($corrData) * 34 + 30) ?>px;">
+      <canvas id="chCorr" role="img" aria-label="กราฟแท่งสหสัมพันธ์ของปัจจัยกับคะแนนรวม"></canvas>
+    </div>
+    <div class="text-muted mt-2" style="font-size:.68rem;">* ค่าสหสัมพันธ์ r ∈ [−1, +1] · บวก = ปัจจัยสูงคะแนนสูง · ลบ = ปัจจัยสูงคะแนนต่ำ · ยิ่งห่างจาก 0 ยิ่งสัมพันธ์แรง</div>
+  </div></div>
+
+  <!-- B4: ค่าเฉลี่ยปัจจัยจำแนกตามระดับ -->
+  <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+    <div class="text-muted small mb-2"><?= nh_icon('layers', 15) ?> ค่าเฉลี่ยปัจจัยจำแนกตามระดับผลคัดกรอง — เปรียบเทียบหลายกลุ่ม (B4)</div>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0" style="font-size:.82rem;">
+        <thead class="table-light"><tr>
+          <th>ปัจจัย (ค่าเฉลี่ย)</th>
+          <?php foreach ($typeLabels as $i => $tl): ?>
+            <th class="text-end"><?= View::e($tl) ?><br><span class="text-muted fw-normal" style="font-size:.7rem;">n=<?= number_format((int) ($gmCounts[$i] ?? 0)) ?></span></th>
+          <?php endforeach; ?>
+          <th class="text-center">แนวโน้ม</th>
+        </tr></thead>
+        <tbody>
+        <?php foreach ($stats['groupMeans']['rows'] as $g):
+          $up = $g['trend'] === 'up'; $down = $g['trend'] === 'down'; ?>
+          <tr>
+            <td><?= View::e($g['label']) ?></td>
+            <?php foreach ($g['means'] as $m): ?>
+              <td class="text-end"><?= $m === null ? '<span class="text-muted">-</span>' : number_format($m, 1) ?></td>
+            <?php endforeach; ?>
+            <td class="text-center">
+              <?php if ($up): ?><span class="badge bg-success">เพิ่มตามระดับ ↑</span>
+              <?php elseif ($down): ?><span class="badge bg-danger">ลดตามระดับ ↓</span>
+              <?php else: ?><span class="text-muted small">—</span><?php endif; ?>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+    <div class="text-muted mt-2" style="font-size:.68rem;">* เทียบค่าเฉลี่ยข้ามกลุ่มระดับความยุ่งยาก (0–3) · "เพิ่มตามระดับ" = โรงเรียนระดับสูงมีค่าปัจจัยนี้สูงกว่า (ปัจจัยบวก)</div>
+  </div></div>
+  <?php endif; ?>
 
   <?php if ($area === 1 && $ethTop): /* กลุ่มชาติพันธุ์ (เฉพาะพื้นที่สูง) */ ?>
   <div class="card border-0 shadow-sm mb-3"><div class="card-body">
@@ -353,6 +504,19 @@ $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APO
       scales: { x: { beginAtZero: true, grid: { color: grid }, ticks: { color: tick, precision: 0 } },
                 y: { grid: { display: false }, ticks: { color: tick } } } }
   });
+
+  var elCorr = document.getElementById('chCorr');
+  if (elCorr) new Chart(elCorr, {
+    type: 'bar',
+    data: { labels: <?= json_encode($corrLabels, $jsonFlags) ?>,
+      datasets: [{ label: 'r กับคะแนนรวม', data: <?= json_encode($corrData, $jsonFlags) ?>,
+        backgroundColor: <?= json_encode($corrColors, $jsonFlags) ?>, borderRadius: 4 }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false },
+        tooltip: { callbacks: { label: function (c) { return 'r = ' + (c.raw > 0 ? '+' : '') + c.raw; } } } },
+      scales: { x: { min: -1, max: 1, grid: { color: grid }, ticks: { color: tick, stepSize: 0.5 } },
+                y: { grid: { display: false }, ticks: { color: tick } } } }
+  });
 })();
 </script>
 
@@ -365,7 +529,12 @@ window.nhDashMap = function () {
   var el = document.getElementById('nhmap');
   if (!el || typeof google === 'undefined') return;
   var map = new google.maps.Map(el, { center: { lat: 15.0, lng: 101.5 }, zoom: 5,
-    mapTypeId: 'terrain', streetViewControl: false, mapTypeControl: false });
+    mapTypeId: 'terrain',
+    streetViewControl: true,   // เปิด Street View (ลาก pegman ลงบนถนนเพื่อดูภาพถนน)
+    // ปุ่มสลับมุมมอง: แผนที่ / ดาวเทียม / ผสม / ภูมิประเทศ
+    mapTypeControl: true,
+    mapTypeControlOptions: { style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+      mapTypeIds: ['roadmap', 'satellite', 'hybrid', 'terrain'] } });
   var info = new google.maps.InfoWindow();
   var bounds = new google.maps.LatLngBounds();
   pins.forEach(function (p) {

@@ -13,8 +13,9 @@ use App\Core\Db;
  *  - funnel + typeDist + scoreHist + utilities + ส่วน kpi ของพื้นที่หนึ่ง = query เดียว (areaStats)
  *    ด้วย conditional SUM แล้ว memoize ต่อ request
  *  - join ที่จำเป็น (school_new/master_school) แก้ชนิดให้ใช้ index: school_new ใช้
- *    CAST(e.sc_id AS CHAR) (PK varchar), master_school ใช้ CONVERT(e.sc_id USING utf8mb3)
- *    (idx_sc_id collation utf8mb3_general_ci)
+ *    CAST(e.sc_id AS CHAR) (PK varchar), master_school ใช้ CONVERT(e.sc_id USING utf8)
+ *    (idx_sc_id เป็น charset 3 ไบต์) — ใช้ชื่อ "utf8" ไม่ใช่ "utf8mb3" เพราะ production
+ *    = MariaDB 10.4 ยังไม่รู้จักชื่อ "utf8mb3" (มีตั้งแต่ 10.6) → "Unknown character set"
  *  - คอลัมน์/ชื่อตารางทั้งหมดมาจากค่าคงที่ภายใน ไม่ใช่ค่าจากผู้ใช้ (กัน SQL injection)
  */
 class DashboardStat
@@ -140,15 +141,34 @@ class DashboardStat
 
     // ---- การ์ด KPI ----
 
-    /** จำนวนเป้าหมายจาก roster การคงอยู่ (school_confirm — มี index idx_sao/idx_area อยู่แล้ว) */
+    /**
+     * จำนวนเป้าหมายจาก roster การคงอยู่ (school_confirm — มี index idx_sao/idx_area อยู่แล้ว)
+     * แยกสถานะการคงอยู่ (opened): active=ยังคงอยู่จริง (1 หรือยังไม่ยืนยัน=NULL),
+     * closed=ยุบ/รวม/เลิก (0), disqualified=ขาดคุณสมบัติ (2)
+     *   - total  = จำนวน roster เดิมทั้งหมด (เป้าหมายตั้งต้น)
+     *   - active = เป้าหมายที่ "ยังคงอยู่จริง" (ตัด ยุบ/รวม/เลิก + ขาดคุณสมบัติ ออก)
+     */
     public static function targets(?int $saoId, int $year): array
     {
-        $sql = 'SELECT COUNT(*) total, SUM(area_type=1) high, SUM(area_type=2) island
+        $sql = 'SELECT COUNT(*) total, SUM(area_type=1) high, SUM(area_type=2) island,
+                       SUM(COALESCE(opened,1)=1) active,
+                       SUM(area_type=1 AND COALESCE(opened,1)=1) high_active,
+                       SUM(area_type=2 AND COALESCE(opened,1)=1) island_active,
+                       SUM(opened=0) closed, SUM(opened=2) disqualified
                   FROM school_confirm c WHERE c.acadyears = ?';
         $p = [$year];
         if ($saoId !== null) { $sql .= ' AND c.sao_id = ?'; $p[] = $saoId; }
         $r = Db::one($sql, $p) ?? [];
-        return ['total' => (int)($r['total'] ?? 0), 'high' => (int)($r['high'] ?? 0), 'island' => (int)($r['island'] ?? 0)];
+        return [
+            'total'         => (int) ($r['total'] ?? 0),
+            'high'          => (int) ($r['high'] ?? 0),
+            'island'        => (int) ($r['island'] ?? 0),
+            'active'        => (int) ($r['active'] ?? 0),
+            'high_active'   => (int) ($r['high_active'] ?? 0),
+            'island_active' => (int) ($r['island_active'] ?? 0),
+            'closed'        => (int) ($r['closed'] ?? 0),
+            'disqualified'  => (int) ($r['disqualified'] ?? 0),
+        ];
     }
 
     /** ดำเนินการ/ผ่านเกณฑ์/เขตรับรอง/สพฐ.ประกาศ — รวมสองพื้นที่จากผล areaStats (เลิก UNION) */
@@ -233,7 +253,7 @@ class DashboardStat
                        SUM(COALESCE(e.confirmstatus,0)=0)  pending,
                        SUM(COALESCE(e.confirmstatus,0)=1)  approved
                   FROM `{$c['table']}` e
-                  LEFT JOIN master_school m  ON m.sc_id  = CONVERT(e.sc_id USING utf8mb3)
+                  LEFT JOIN master_school m  ON m.sc_id  = CONVERT(e.sc_id USING utf8)
                   LEFT JOIN master_sao    ms ON ms.sao_id = m.sao_code
                  WHERE e.acadyears = ? AND e.sum_score IS NOT NULL $rs
                  GROUP BY m.sao_code, ms.sao_name
@@ -275,6 +295,42 @@ class DashboardStat
             'students' => (int) ($sum['students'] ?? 0),
             'schools'  => (int) ($sum['schools'] ?? 0),
         ];
+    }
+
+    /** ปีงบประมาณที่มีข้อมูลประเมิน (distinct acadyears รวมสองพื้นที่) — เรียงใหม่→เก่า */
+    public static function availableYears(): array
+    {
+        $rows = Db::all(
+            'SELECT acadyears y FROM highland_eval WHERE sum_score > 0
+             UNION SELECT acadyears y FROM island_eval WHERE sum_score > 0
+             ORDER BY y DESC'
+        );
+        return array_map(fn($r) => (int) $r['y'], $rows);
+    }
+
+    // ---- แถวดิบสำหรับวิเคราะห์สถิติ (StatService: U1/B2/B4) ----
+
+    /**
+     * ดึงตัวแปรเชิงตัวเลขของโรงเรียนที่ "ประเมินแล้ว" (sum_score>0) ตาม role/ปี
+     * คอลัมน์ทั้งหมดเป็นค่าคงที่ภายใน (ไม่รับจากผู้ใช้) — กัน SQL injection
+     * ใช้ทำ describe / correlation / group-mean ฝั่ง PHP (ผลถูก cache ในชั้น controller)
+     */
+    public static function analyticsRows(int $area, ?int $saoId, int $year): array
+    {
+        [$rs, $rp] = self::evalScope(self::saoScids($saoId));
+        if ($area === 2) {
+            $tbl  = 'island_eval';
+            $cols = 'e.sum_score, e.island_type, e.stu_sum, e.distance_to_province,
+                     e.citeria05, e.citeria06, e.citeria07, e.citeria08, e.citeria15';
+        } else {
+            $tbl  = 'highland_eval';
+            $cols = 'e.sum_score, e.highland_type, e.highest, e.average_height, e.distance_to_province,
+                     e.stu_sum, e.stu_hilltrib, e.stu_hilltrib_group, e.stu_sleep_sum, e.citeria13';
+        }
+        $sql = "SELECT $cols
+                  FROM `$tbl` e
+                 WHERE e.acadyears = ? AND e.sum_score IS NOT NULL AND e.sum_score > 0 $rs";
+        return Db::all($sql, array_merge([$year], $rp));
     }
 
     // ---- พิกัดโรงเรียนสำหรับแผนที่หมุด — ใช้ school_new ผ่าน CAST (eq_ref PK) ----
