@@ -12,6 +12,7 @@ use App\Controllers\AuthController;
 use App\Controllers\LandingController;
 use App\Controllers\HomeController;
 use App\Controllers\DashboardController;
+use App\Controllers\FullReportController;
 use App\Controllers\SchoolController;
 use App\Controllers\MapController;
 use App\Controllers\HighlandEvalController;
@@ -20,6 +21,7 @@ use App\Controllers\ConfirmController;
 use App\Controllers\IslandEvalController;
 use App\Controllers\IslandCertController;
 use App\Controllers\UserAdminController;
+use App\Controllers\SystemStatusController;
 
 $router = new Router();
 
@@ -27,7 +29,10 @@ $router = new Router();
 $router->get('',          [LandingController::class, 'index']);
 $router->get('dashboard', [HomeController::class, 'index']);
 $router->get('report',        [DashboardController::class, 'index']);   // รายงานสถิติ (สพท./สพฐ.)
-$router->get('report/export', [DashboardController::class, 'export']);  // ส่งออก CSV
+$router->get('report/export', [DashboardController::class, 'export']);  // ส่งออก CSV (สรุป/สถิติ)
+$router->get('report/export/xlsx', [DashboardController::class, 'exportXlsx']); // ส่งออก Excel (รายละเอียดทุกรายการ)
+$router->get('report/word',        [DashboardController::class, 'exportWord']);   // ส่งออก Word บัญชีแนบท้าย 1/2 (รายชื่อ ร.ร.พื้นที่พิเศษ ตามเขต)
+$router->get('report/full',         [FullReportController::class, 'index']);     // รายงานฉบับเต็ม HTML ทุกมิติ (สพฐ.) — ?year=auto|all|2569 &download=1
 
 // ---- Authentication ----
 $router->get('auth/login',  [AuthController::class, 'showLogin']);
@@ -60,6 +65,7 @@ $router->post('highland/cert/spt', [HighlandCertController::class, 'spt']);
 
 // ---- ส่วนที่ 3 + 4: รับรองการคงอยู่ (พื้นที่สูง/เกาะ) ----
 $router->get('confirm',         [ConfirmController::class, 'index']);
+$router->get('confirm/word',    [ConfirmController::class, 'exportWord']); // ส่งออก Word: รายชื่อ ร.ร.เดิมที่ยืนยันคงอยู่ (ตามเขต)
 $router->get('confirm/view',    [ConfirmController::class, 'view']);   // ดูรายละเอียดรายโรงเรียน (อ่านอย่างเดียว)
 $router->post('confirm/school', [ConfirmController::class, 'school']);
 $router->post('confirm/sao',    [ConfirmController::class, 'sao']);
@@ -83,5 +89,9 @@ $router->get('admin/users',           [UserAdminController::class, 'index']);
 $router->post('admin/users/save',     [UserAdminController::class, 'save']);
 $router->post('admin/users/password', [UserAdminController::class, 'password']);
 $router->post('admin/users/delete',   [UserAdminController::class, 'delete']);
+
+// ---- ปิด-เปิดระบบการคัดกรอง (เฉพาะ สพฐ. admin) ----
+$router->get('admin/system',       [SystemStatusController::class, 'index']);
+$router->post('admin/system/save', [SystemStatusController::class, 'save']);
 
 $router->dispatch(Request::method(), Request::path());
