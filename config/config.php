@@ -40,8 +40,18 @@ return [
     'acad_year' => 2569,
 
     // ---- Google Maps / Elevation / Directions / Places ----
-    // TODO (PRD §13.5): พิจารณาออกคีย์ใหม่ + จำกัด HTTP referrer ใน Google Console
-    'google_maps_key' => 'AIzaSyA-qO_KS9xBX1I_uDebo_3giC7zY5v4p5c',
+    // ใส่ API key ของคุณเองได้ 3 ทาง (เรียงตามลำดับความสำคัญ):
+    //   1) env GOOGLE_MAPS_API_KEY            ← แนะนำสำหรับ production (ไม่หลุดลง git)
+    //   2) ไฟล์ config/maps_key.local.php     ← วาง key ตรง ๆ (ถูก .gitignore ไว้)
+    //   3) ค่า fallback ด้านล่าง (placeholder) ← แก้ตรงนี้ก็ได้ถ้าไม่ใช้ 2 วิธีบน
+    // TODO (PRD §13.5): จำกัด HTTP referrer ของคีย์ใน Google Console
+    'google_maps_key' => (static function (string $dir): string {
+        $env = getenv('GOOGLE_MAPS_API_KEY');
+        if (is_string($env) && trim($env) !== '') return trim($env);
+        $f = $dir . '/maps_key.local.php';
+        if (is_file($f)) { $k = require $f; if (is_string($k) && trim($k) !== '') return trim($k); }
+        return 'YOUR_GOOGLE_MAPS_API_KEY';
+    })(__DIR__),
 
     // ---- เกณฑ์ความสูง (เมตร) สำหรับตัดสินภูเขา/พื้นราบ ----
     'elevation_threshold' => 500,
@@ -55,6 +65,12 @@ return [
     // fonts/THSarabunNew*.ttf และ vendor/mpdf/mpdf/tmp/ (ต้องเขียนได้บน server)
     'mpdf_path'        => $pdfDir('mpdf'),
     'mpdf_island_path' => $pdfDir('island_pdf'),
+
+    // ---- PHPExcel (vendor + ตัวเดียวกับ mpdf_path — บันเดิลไว้ใน /vendor_pdf) ----
+    // ใช้สร้างรายงาน .xlsx (หน้า "รายงานสถิติ" > ส่งออก Excel) — ห้องสมุดเก่า (PHPExcel 1.7.5)
+    // เพราะไม่มี Composer ในโปรเจกต์นี้; PHP 8.1 มี deprecated-notice เยอะแต่ทำงานถูกต้อง
+    // (ตัวเรียกต้อง suppress error_reporting ก่อน require ดู XlsxReportService)
+    'phpexcel_path'    => $pdfDir('PHPExcel'),
 
     // ---- บัญชีระดับ สพฐ. (admin) ----
     // login จาก master_saonew ที่ user อยู่ในรายการนี้จะได้ role = admin

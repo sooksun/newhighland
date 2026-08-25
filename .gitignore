@@ -28,3 +28,6 @@ desktop.ini
 
 # DB dump เต็ม (ใหญ่เกินลิมิต GitHub) — เก็บไว้ในเครื่องเท่านั้น
 /docs/ssrainfo_ssra.sql
+
+# Google Maps API key เฉพาะเครื่อง/เซิร์ฟเวอร์ (ไม่ commit คีย์ลง git) — ดู config/maps_key.local.example.php
+/config/maps_key.local.php
