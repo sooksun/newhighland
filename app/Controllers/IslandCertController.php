@@ -27,7 +27,13 @@ class IslandCertController
     {
         Auth::require([Auth::ROLE_SAO, Auth::ROLE_ADMIN]);
 
-        $saoId   = Auth::isSao() ? (int) Auth::saoId() : null;   // สพฐ. = ทุกเขต
+        // สพฐ. กรองเฉพาะเขตได้ผ่าน ?sao= (drill-down จากหน้ารายงาน); เขตถูกล็อกที่สังกัดตน
+        $saoParam = trim((string) Request::get('sao', ''));
+        $saoId    = Auth::isSao() ? (int) Auth::saoId()
+                  : ($saoParam !== '' ? (int) $saoParam : null);
+        $saoFilter = (Auth::isAdmin() && $saoParam !== '') ? (int) $saoParam : '';
+        $saoName   = $saoFilter !== '' ? (string) (\App\Models\MasterSao::find($saoFilter)['sao_name'] ?? '') : '';
+
         $filters = [
             'q'        => trim((string) Request::get('q', '')),
             'province' => trim((string) Request::get('province', '')),
@@ -35,10 +41,12 @@ class IslandCertController
         ];
 
         View::render('island/cert_list', [
-            'title'   => 'รออนุมัติ — รับรองผลประเมินพื้นที่เกาะ',
-            'rows'    => IslandEval::listForCert($saoId, $this->year, $filters),
-            'stats'   => IslandEval::certStats($saoId, $this->year),
-            'filters' => $filters,
+            'title'     => 'รออนุมัติ — รับรองผลประเมินพื้นที่เกาะ',
+            'rows'      => IslandEval::listForCert($saoId, $this->year, $filters),
+            'stats'     => IslandEval::certStats($saoId, $this->year),
+            'filters'   => $filters,
+            'saoFilter' => $saoFilter,
+            'saoName'   => $saoName,
         ]);
     }
 

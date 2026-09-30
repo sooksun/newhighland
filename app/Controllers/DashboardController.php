@@ -1,0 +1,232 @@
+<?php
+namespace App\Controllers;
+
+use App\Core\App;
+use App\Core\Auth;
+use App\Core\Cache;
+use App\Core\Request;
+use App\Core\View;
+use App\Models\CriteriaOption;
+use App\Models\DashboardStat;
+use App\Models\IslandOption;
+use App\Services\SchoolMenu;
+use App\Services\StatService;
+use App\Services\XlsxReportService;
+
+/**
+ * หน้า "รายงานสถิติ" (Executive dashboard) — กราฟ/การ์ดสรุปภาพรวมการคัดกรอง + ส่งออก CSV
+ * เฉพาะ สพท. (เขต) / สพฐ. ; เขตเห็นเฉพาะสังกัดตน, สพฐ. เห็นทุกเขต (DashboardStat คุมขอบเขต)
+ */
+class DashboardController
+{
+    private int $year;
+
+    public function __construct()
+    {
+        $this->year = App::acadYear();
+    }
+
+    /** บริบทตาม role + พารามิเตอร์ ?area= : คืน [saoId, area, areas] */
+    private function context(): array
+    {
+        $saoId = Auth::isSao() ? (int) Auth::saoId() : null;   // สพฐ. = null = ทุกเขต
+        $areas = Auth::isAdmin() ? [1, 2] : (SchoolMenu::current()['areas'] ?: [1, 2]);
+        $area  = (int) Request::get('area', $areas[0] ?? 1);
+        if (!in_array($area, $areas, true)) $area = $areas[0] ?? 1;
+        return [$saoId, $area, $areas];
+    }
+
+    /** ป้ายชื่อระดับสาธารณูปโภคแต่ละข้อ (key => [id => label]) — memoize ต่อ request (index+export reuse) */
+    private function utilLabels(int $area): array
+    {
+        static $memo = [];
+        if (isset($memo[$area])) return $memo[$area];
+        $out = [];
+        foreach (DashboardStat::utilConfig($area) as $key => $nn) {
+            $opts = $area === 1 ? CriteriaOption::get($nn) : IslandOption::get($nn);
+            $map = [];
+            foreach ($opts as $o) $map[(int) $o['id']] = $o['label'];
+            $out[$key] = $map;
+        }
+        return $memo[$area] = $out;
+    }
+
+    public function index(): void
+    {
+        Auth::require([Auth::ROLE_SAO, Auth::ROLE_ADMIN]);
+        [$saoId, $area, $areas] = $this->context();
+
+        // เลือกปีงบประมาณดูข้อมูลย้อนหลังได้ (?year=) — ค่าเริ่มต้น = ปีปัจจุบัน; รับเฉพาะปีที่มีข้อมูลจริง
+        $years = DashboardStat::availableYears();
+        $reqYear = (int) Request::get('year', $this->year);
+        if (in_array($reqYear, $years, true)) $this->year = $reqYear;
+
+        // แสดง "ค่าล่าสุดที่ประมวลผลไว้" จาก cache ทันที; กด "ประมวลผลใหม่" (?refresh=1) = คำนวณสด + เขียนทับ cache
+        $key     = 'dash_' . $area . '_' . ($saoId ?? 'all') . '_' . $this->year;
+        $refresh = Request::get('refresh', '') !== '';
+        $data    = $refresh ? null : Cache::get($key);
+        if ($data === null) {
+            $data = $this->compute($area, $saoId);
+            Cache::put($key, $data);
+        }
+
+        View::render('report/index', array_merge($data, [
+            'title'      => 'รายงานสถิติ — ภาพรวมการคัดกรอง',
+            'year'       => $this->year,
+            'years'      => $years,
+            'area'       => $area,
+            'areas'      => $areas,
+            'isAdmin'    => Auth::isAdmin(),
+            'googleKey'  => (string) App::config('google_maps_key'),
+            'computedAt' => (int) ($data['computed_at'] ?? 0),
+            'refreshUrl' => App::url('report?area=' . $area . '&year=' . $this->year . '&refresh=1'),
+        ]));
+    }
+
+    /** ประมวลผลข้อมูลรายงานทั้งหน้า (ใช้ทั้งตอนสด และตอนเก็บลง cache) — ติด computed_at */
+    private function compute(int $area, ?int $saoId): array
+    {
+        $y = $this->year;
+        return [
+            'targets'     => DashboardStat::targets($saoId, $y),
+            'kpi'         => DashboardStat::kpis($saoId, $y),
+            'funnel'      => DashboardStat::funnel($area, $saoId, $y),
+            'typeDist'    => DashboardStat::typeDist($area, $saoId, $y),
+            'scoreHist'   => DashboardStat::scoreHist($area, $saoId, $y),
+            'provinces'   => DashboardStat::topProvinces($area, $saoId, $y),
+            'utils'       => DashboardStat::utilities($area, $saoId, $y),
+            'utilLabels'  => $this->utilLabels($area),
+            // ไทล์เพิ่ม: ชาติพันธุ์ (เฉพาะพื้นที่สูง), แผนที่หมุด, เขตค้างรับรอง
+            'ethnic'      => $area === 1 ? DashboardStat::ethnic($saoId, $y) : null,
+            'pins'        => DashboardStat::pins($area, $saoId, $y),
+            'pending'     => DashboardStat::certByDistrict($area, $saoId, $y),
+            // วิเคราะห์สถิติ (U1 พรรณนา / B2 ปัจจัย→คะแนน / B4 ค่าเฉลี่ยข้ามระดับ)
+            'stats'       => StatService::analyze(DashboardStat::analyticsRows($area, $saoId, $y), $area),
+            'computed_at' => time(),
+        ];
+    }
+
+    /** ส่งออกข้อมูลรายงานเป็น CSV (UTF-8 + BOM ให้ Excel อ่านภาษาไทยได้ถูก) */
+    public function export(): void
+    {
+        Auth::require([Auth::ROLE_SAO, Auth::ROLE_ADMIN]);
+        [$saoId, $area] = $this->context();
+        $reqYear = (int) Request::get('year', $this->year);
+        if (in_array($reqYear, DashboardStat::availableYears(), true)) $this->year = $reqYear;
+        $y = $this->year;
+
+        $targets = DashboardStat::targets($saoId, $y);
+        $kpi     = DashboardStat::kpis($saoId, $y);
+        $type    = DashboardStat::typeDist($area, $saoId, $y);
+        $score   = DashboardStat::scoreHist($area, $saoId, $y);
+        $prov    = DashboardStat::topProvinces($area, $saoId, $y, 100);
+        $utils   = DashboardStat::utilities($area, $saoId, $y);
+        $pending = DashboardStat::certByDistrict($area, $saoId, $y, 200);
+        $ethnic  = $area === 1 ? DashboardStat::ethnic($saoId, $y, 100) : null;
+        $uLabels = $this->utilLabels($area);
+
+        $areaName  = $area === 2 ? 'พื้นที่เกาะ' : 'พื้นที่สูง';
+        $typeNames = [($area === 2 ? 'ไม่เป็นพื้นที่เกาะ' : 'ไม่เป็นพื้นที่สูง'), 'ยุ่งยาก', 'ยุ่งยากมาก', 'ยุ่งยากมากที่สุด'];
+        $utilNames = ['water' => 'น้ำ/ประปา', 'power' => 'ไฟฟ้า', 'phone' => 'โทรศัพท์', 'net' => 'อินเทอร์เน็ต'];
+        $pct = fn($a, $b) => $b > 0 ? round($a * 100 / $b, 1) : 0.0;
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="report_' . $y . '_area' . $area . '.csv"');
+        header('Cache-Control: no-store');
+        $out = fopen('php://output', 'w');
+        fwrite($out, "\xEF\xBB\xBF");                 // BOM
+        $w = fn(array $r) => fputcsv($out, $r);
+
+        $w(['รายงานสถิติการคัดกรองโรงเรียนพื้นที่ลักษณะพิเศษ']);
+        $w(['ปีงบประมาณ', $y, 'ประเภทพื้นที่', $areaName, 'ขอบเขต', Auth::isAdmin() ? 'ทุกเขต (สพฐ.)' : Auth::saoName()]);
+        $w([]);
+
+        $w(['== ภาพรวม (KPI) ==']);
+        $w(['ตัวชี้วัด', 'จำนวน']);
+        $w(['โรงเรียนเป้าหมาย (ยังคงอยู่จริง)', $targets['active']]);
+        $w(['  - พื้นที่สูง', $targets['high_active']]);
+        $w(['  - พื้นที่เกาะ', $targets['island_active']]);
+        $w(['ดำเนินการแล้ว (ประเมินเสร็จ)', $kpi['done']]);
+        $w(['ผ่านเกณฑ์ (คะแนน >= 50)', $kpi['passed']]);
+        $w(['เขตรับรองแล้ว', $kpi['sao_certed']]);
+        $w(['สพฐ. ประกาศ', $kpi['spt_announced']]);
+        $w([]);
+
+        $w(['== สถานะการคงอยู่ (roster เดิม) ==']);
+        $w(['สถานะ', 'จำนวน']);
+        $w(['เป้าหมายตั้งต้น (roster ทั้งหมด)', $targets['total']]);
+        $w(['ยังคงอยู่ (นับเป็นเป้าหมาย)', $targets['active']]);
+        $w(['ยุบ/รวม/เลิก', $targets['closed']]);
+        $w(['ขาดคุณสมบัติ', $targets['disqualified']]);
+        $w([]);
+
+        $tTotal = array_sum($type);
+        $w(['== ระดับความยุ่งยาก (' . $areaName . ') ==']);
+        $w(['ระดับ', 'จำนวน', 'ร้อยละ']);
+        foreach ($type as $lvl => $n) $w([$typeNames[$lvl] ?? $lvl, $n, $pct($n, $tTotal)]);
+        $w([]);
+
+        $w(['== การกระจายคะแนนรวม ==']);
+        $w(['ช่วงคะแนน', 'จำนวน']);
+        foreach ($score as $bucket => $n) $w([$bucket, $n]);
+        $w([]);
+
+        $w(['== จังหวัดที่ผ่านเกณฑ์ ==']);
+        $w(['จังหวัด', 'จำนวนผ่านเกณฑ์']);
+        foreach ($prov as $r) $w([$r['province'], $r['passed']]);
+        $w([]);
+
+        $w(['== สาธารณูปโภค ==']);
+        $w(['ประเภท', 'ระดับการเข้าถึง', 'จำนวน', 'ร้อยละ']);
+        foreach ($utils as $key => $u) {
+            $ans = max(1, (int) $u['answered']);
+            foreach ($u['levels'] as $l => $n) {
+                $w([$utilNames[$key] ?? $key, $uLabels[$key][$l] ?? ('ระดับ ' . $l), $n, $pct($n, $ans)]);
+            }
+        }
+        $w([]);
+
+        if ($ethnic !== null) {
+            $w(['== กลุ่มชาติพันธุ์ ==']);
+            $w(['รวมทั้งหมด', 'กลุ่ม', $ethnic['groups'], 'นักเรียน', $ethnic['students'], 'โรงเรียน', $ethnic['schools']]);
+            $w(['กลุ่มชาติพันธุ์', 'นักเรียน', 'โรงเรียน']);
+            foreach ($ethnic['top'] as $r) $w([$r['ethnic'], $r['students'], $r['schools']]);
+            $w([]);
+        }
+
+        $w(['== เขตที่ยังค้างรับรอง ==']);
+        $w(['เขตพื้นที่', 'ประเมินเสร็จ', 'ค้างรับรอง', 'รับรองแล้ว', 'ร้อยละรับรอง']);
+        foreach ($pending as $d) $w([$d['sao_name'], $d['done'], $d['pending'], $d['approved'], $pct((int) $d['approved'], (int) $d['done'])]);
+
+        fclose($out);
+        exit;
+    }
+
+    /**
+     * ส่งออกรายงานการคัดกรอง (ประเมินพื้นที่สูง/เกาะ) + รับรองการคงอยู่ เป็น Excel ทุกรายการ (4 ชีต)
+     * ไม่ใช่สรุป/สถิติแบบ export() — นี่คือรายละเอียดรายโรงเรียนทุกแถว; เขตเห็นเฉพาะสังกัดตน
+     */
+    public function exportXlsx(): void
+    {
+        Auth::require([Auth::ROLE_SAO, Auth::ROLE_ADMIN]);
+        $saoId = Auth::isSao() ? (int) Auth::saoId() : null;
+        $reqYear = (int) Request::get('year', $this->year);
+        if (in_array($reqYear, DashboardStat::availableYears(), true)) $this->year = $reqYear;
+        XlsxReportService::screeningReport($saoId, $this->year);
+    }
+
+    /**
+     * ส่งออก "บัญชีแนบท้าย" รายชื่อโรงเรียนพื้นที่พิเศษ เป็น Word (.docx) — แบ่งตามสำนักงานเขต
+     * ?area=1 = แนบท้าย 1 (พื้นที่สูง), ?area=2 = แนบท้าย 2 (พื้นที่เกาะ) ; เขตเห็นเฉพาะสังกัดตน
+     */
+    public function exportWord(): void
+    {
+        Auth::require([Auth::ROLE_SAO, Auth::ROLE_ADMIN]);
+        $saoId = Auth::isSao() ? (int) Auth::saoId() : null;
+        $area  = (int) Request::get('area', 1);
+        if (!in_array($area, [1, 2], true)) $area = 1;
+        $reqYear = (int) Request::get('year', $this->year);
+        if (in_array($reqYear, DashboardStat::availableYears(), true)) $this->year = $reqYear;
+        \App\Services\WordReportService::appendix($area, $saoId, $this->year);
+    }
+}

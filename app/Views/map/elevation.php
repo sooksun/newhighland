@@ -61,13 +61,27 @@
     ], JSON_UNESCAPED_UNICODE) ?>;
 
     const SAMPLES = 256;
-    let map, chartData = null, computed = null;
+    let map, chartData = null, computed = null, carMarker = null, pathPts = [];
+
+    // ไอคอนรถ (SVG วงกลมแดง) สำหรับเลื่อนตามเส้นทางเมื่อชี้/ลากบนกราฟ
+    const CAR_SVG =
+      "<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 24 24'>" +
+      "<circle cx='12' cy='12' r='11' fill='#fff' stroke='#d32f2f' stroke-width='1.6'/>" +
+      "<path fill='#d32f2f' d='M5.6 14.2 6.9 10c.3-.9 1-1.5 1.9-1.5h6.4c.9 0 1.6.6 1.9 1.5l1.3 4.2v3.3c0 .3-.2.5-.5.5h-1c-.3 0-.5-.2-.5-.5V17H7.6v.5c0 .3-.2.5-.5.5h-1c-.3 0-.5-.2-.5-.5v-3.3zm2-.7h8.8l-.9-2.8c-.1-.3-.3-.4-.5-.4H8.9c-.2 0-.4.1-.5.4l-.8 2.8zM8 16a1 1 0 100-2 1 1 0 000 2zm8 0a1 1 0 100-2 1 1 0 000 2z'/>" +
+      "</svg>";
 
     google.charts.load('current', {packages:['corechart']});
 
     function initMap() {
       map = new google.maps.Map(document.getElementById('map'), {
-        zoom: 9, center: {lat: CFG.lat0, lng: CFG.lng0}, mapTypeId: 'terrain'
+        zoom: 9, center: {lat: CFG.lat0, lng: CFG.lng0}, mapTypeId: 'terrain',
+        streetViewControl: true,   // เปิด Street View (ลาก pegman ลงบนถนนเพื่อดูภาพถนน)
+        // ปุ่มสลับมุมมอง: แผนที่ / ดาวเทียม / ผสม / ภูมิประเทศ
+        mapTypeControl: true,
+        mapTypeControlOptions: {
+          style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+          mapTypeIds: ['roadmap', 'satellite', 'hybrid', 'terrain']
+        }
       });
       if (!CFG.lat0 || !CFG.lat2) {
         setStatus('danger', 'ไม่พบพิกัดโรงเรียนหรือศาลากลางจังหวัด — กรุณาปักหมุดและตรวจข้อมูลจังหวัด');
@@ -116,13 +130,45 @@
 
       document.getElementById('result').classList.remove('d-none');
       document.getElementById('saveBtn').disabled = false;
-      setStatus('success', 'ประมวลผลเสร็จ');
+      setStatus('success', 'ประมวลผลเสร็จ — ชี้/ลากบนกราฟด้านล่างเพื่อเลื่อนรถตามเส้นทาง');
+
+      // เก็บตำแหน่ง lat/lng ของแต่ละจุดตัวอย่าง (ดัชนีตรงกับแถวในกราฟ) + วางรถที่จุดเริ่มต้น
+      pathPts = path;
+      ensureCarMarker();
+      if (pathPts.length) { carMarker.setPosition(pathPts[0]); carMarker.setVisible(true); }
 
       google.charts.setOnLoadCallback(() => {
         const chart = new google.visualization.ColumnChart(document.getElementById('chart'));
         chart.draw(google.visualization.arrayToDataTable(rows),
           {legend:'none', hAxis:{textPosition:'none'}, vAxis:{title:'ความสูง (ม.)'}});
+        // ชี้/ลากบนแท่งกราฟ → เลื่อน car icon ไปยังจุดบนเส้นทางที่ตรงกัน
+        google.visualization.events.addListener(chart, 'onmouseover', e => moveCarToRow(e.row));
       });
+    }
+
+    /** สร้าง car marker บนแผนที่ (ครั้งเดียว) */
+    function ensureCarMarker() {
+      if (carMarker || !map) return;
+      carMarker = new google.maps.Marker({
+        map,
+        icon: {
+          url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(CAR_SVG),
+          scaledSize: new google.maps.Size(40, 40),
+          anchor: new google.maps.Point(20, 20),
+        },
+        zIndex: 9999,
+        clickable: false,
+        visible: false,
+      });
+    }
+
+    /** เลื่อนรถไปยังจุดบนเส้นทางที่ตรงกับแถวกราฟ (row) */
+    function moveCarToRow(row) {
+      if (row == null || !carMarker) return;
+      const pt = pathPts[row];
+      if (!pt) return;
+      carMarker.setPosition(pt);
+      carMarker.setVisible(true);
     }
 
     function setStatus(type, msg) {

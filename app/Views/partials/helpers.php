@@ -45,6 +45,7 @@ if (!function_exists('nh_icon')) {
             'building'    => '<rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M9 8h.01M15 8h.01M9 12h.01M15 12h.01M9 16h.01M15 16h.01"/>',
             'school'      => '<path d="m4 9 8-5 8 5v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z"/><path d="M9 21v-6h6v6"/>',
             'search'      => '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+            'key'         => '<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3"/><path d="m17 6 2 2"/><path d="m15 8 1.5 1.5"/>',
             'plus'        => '<path d="M12 5v14M5 12h14"/>',
             'trash'       => '<path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/>',
             'upload'      => '<path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
@@ -66,6 +67,7 @@ if (!function_exists('nh_icon')) {
             'edit'        => '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
             'list'        => '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>',
             'clock'       => '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+            'refresh'     => '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>',
             'trendUp'     => '<path d="m3 17 6-6 4 4 8-8"/><path d="M17 7h4v4"/>',
             'layers'      => '<path d="m12 3 9 5-9 5-9-5Z"/><path d="m3 13 9 5 9-5"/>',
             'globe'       => '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18"/>',
@@ -159,6 +161,7 @@ if (!function_exists('nh_icon')) {
         $home = ['แดชบอร์ด', 'dashboard'];
         // แต่ละ trail = ลำดับ [label, path|null]  (null = ขั้นปัจจุบัน ไม่ลิงก์)
         $trails = [
+            'report'         => [$home, ['รายงานสถิติ', null]],
             'highland'       => [$home, ['ประเมินพื้นที่สูง', 'highland'], ['เลือกโรงเรียน', null]],
             'map'            => [$home, ['ประเมินพื้นที่สูง', 'highland'], ['ปักหมุด · วัดความสูง', null]],
             'highland/eval'  => [$home, ['ประเมินพื้นที่สูง', 'highland'], ['แบบประเมิน 16 ข้อ', null]],

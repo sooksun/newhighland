@@ -3,7 +3,7 @@ Options -Indexes
 
 # ปิดกั้นการเข้าถึงโฟลเดอร์/ไฟล์ภายในจากเว็บโดยตรง
 # ใช้ RedirectMatch (ทำงานช่วง translate ก่อน auth) เพื่อให้กันได้เสมอ แม้ผู้ใช้ผ่าน Basic Auth แล้ว
-RedirectMatch 403 ^/?(app|config|database|docs|docsref)(/|$)
+RedirectMatch 403 ^/?(app|config|database|docs|docsref|vendor_pdf|storage|tools)(/|$)
 RedirectMatch 403 (?:^|/)\.ht
 RedirectMatch 403 \.(md|sql|json|lock|txt|xlsx)$
 

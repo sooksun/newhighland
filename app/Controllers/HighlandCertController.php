@@ -28,7 +28,13 @@ class HighlandCertController
     {
         Auth::require([Auth::ROLE_SAO, Auth::ROLE_ADMIN]);
 
-        $saoId   = Auth::isSao() ? (int) Auth::saoId() : null;   // สพฐ. = ทุกเขต
+        // สพฐ. กรองเฉพาะเขตได้ผ่าน ?sao= (drill-down จากหน้ารายงาน); เขตถูกล็อกที่สังกัดตน
+        $saoParam = trim((string) Request::get('sao', ''));
+        $saoId    = Auth::isSao() ? (int) Auth::saoId()
+                  : ($saoParam !== '' ? (int) $saoParam : null);
+        $saoFilter = (Auth::isAdmin() && $saoParam !== '') ? (int) $saoParam : '';
+        $saoName   = $saoFilter !== '' ? (string) (\App\Models\MasterSao::find($saoFilter)['sao_name'] ?? '') : '';
+
         $filters = [
             'q'        => trim((string) Request::get('q', '')),
             'province' => trim((string) Request::get('province', '')),
@@ -36,10 +42,35 @@ class HighlandCertController
         ];
 
         View::render('highland/cert_list', [
-            'title'   => 'รออนุมัติ — รับรองผลประเมินพื้นที่สูง',
-            'rows'    => HighlandEval::listForCert($saoId, $this->year, $filters),
-            'stats'   => HighlandEval::certStats($saoId, $this->year),
-            'filters' => $filters,
+            'title'     => 'รออนุมัติ — รับรองผลประเมินพื้นที่สูง',
+            'rows'      => HighlandEval::listForCert($saoId, $this->year, $filters),
+            'stats'     => HighlandEval::certStats($saoId, $this->year),
+            'filters'   => $filters,
+            'saoFilter' => $saoFilter,
+            'saoName'   => $saoName,
+        ]);
+    }
+
+    /**
+     * ดูข้อมูลรายโรงเรียน (อ่านอย่างเดียว) สำหรับ สพท./สพฐ. — เข้าจากปุ่ม "ดูข้อมูล" ในรายการรออนุมัติ
+     * รับ ?back=<query string ของรายการ> เพื่อให้ปุ่มย้อนกลับคงตัวกรองเดิมไว้
+     */
+    public function view(): void
+    {
+        Auth::require([Auth::ROLE_SAO, Auth::ROLE_ADMIN]);
+        $scId = (int) Request::get('sc_id', 0);
+        $this->guard($scId);
+
+        $ctx  = \App\Services\SchoolContext::build($scId, $this->year);
+        $eval = HighlandEval::find($scId, $this->year);
+
+        View::render('highland/cert_view', [
+            'title'        => 'ดูข้อมูลโรงเรียน — ' . ($ctx['sc_name'] ?: $scId),
+            'ctx'          => $ctx,
+            'e'            => $eval ?? [],
+            'options'      => \App\Models\CriteriaOption::allSets(),
+            'hilltribRows' => HighlandEval::hilltribRows($scId, $this->year),
+            'back'         => ltrim(trim((string) Request::get('back', '')), '?'),
         ]);
     }
 

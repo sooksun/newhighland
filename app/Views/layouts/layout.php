@@ -18,17 +18,30 @@ $navLinks = [
   ['highland',  'ประเมินพื้นที่สูง',   'mountain',    ['highland', 'map']],
   ['island',    'ประเมินพื้นที่เกาะ',  'waves',       ['island']],
 ];
+// รายงานสถิติ (Executive dashboard) — เฉพาะ สพท./สพฐ.
+if (in_array($role, ['sao', 'admin'], true)) {
+  $navLinks[] = ['report', 'รายงานสถิติ', 'trendUp', ['report']];
+}
 // ขั้นรับรอง (รออนุมัติ) — เฉพาะ สพท./สพฐ.; เขตชี้ไปพื้นที่ที่ตนดูแล, สพฐ. ครอบคลุมทั้งสองพื้นที่
 if (in_array($role, ['sao', 'admin'], true)) {
   $certPath = $role === 'sao' ? \App\Services\SchoolMenu::current()['cert'] : 'highland/cert';
   $navLinks[] = [$certPath, 'รออนุมัติ (สพท.)', 'shieldCheck', ['highland/cert', 'island/cert']];
 }
 $navLinks[] = ['confirm', 'รับรองการคงอยู่', 'shieldCheck', ['confirm']];
+// จัดการผู้ใช้ + รหัสผ่าน — สพฐ. (ทุกบัญชี) + สพท. (เฉพาะบัญชีโรงเรียนในเขตตน)
+if (in_array($role, ['sao', 'admin'], true)) {
+  $navLinks[] = ['admin/users', 'จัดการผู้ใช้', 'users', ['admin']];
+}
+// ปิด-เปิดระบบการคัดกรอง — เฉพาะ สพฐ. (admin)
+if ($role === 'admin') {
+  $navLinks[] = ['admin/system', 'ปิด-เปิดระบบ', 'zap', ['admin/system']];
+}
 
 // auto menu filter: โรงเรียน/เขต เห็นเฉพาะเมนูที่ตรงคุณสมบัติ (กันลงข้อมูลผิดประเภท); สพฐ. เห็นครบ
+// 'admin/users' เป็นเมนูจัดการข้ามพื้นที่ — คงไว้เสมอสำหรับเขต (ไม่ถูกกรองออกแม้ไม่อยู่ใน nav ที่แคชไว้)
 if (in_array($role, ['school', 'sao'], true)) {
   $allowedNav = \App\Services\SchoolMenu::current()['nav'];
-  $navLinks = array_values(array_filter($navLinks, fn($l) => in_array($l[0], $allowedNav, true)));
+  $navLinks = array_values(array_filter($navLinks, fn($l) => in_array($l[0], ['admin/users', 'report'], true) || in_array($l[0], $allowedNav, true)));
 }
 
 // หน้ารับรอง (cert) ต้อง active ที่เมนู "รออนุมัติ" เท่านั้น ไม่ใช่เมนูประเมิน
@@ -102,6 +115,12 @@ $navIsActive = function (string $path, array $matches) use ($curPath, $seg, $onC
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="ปิด"></button>
       </div>
     <?php endforeach; ?>
+    <?php if ($role === 'school' && !\App\Models\SystemStatus::isOpen()): ?>
+      <div class="alert alert-warning d-flex align-items-start gap-2" role="alert">
+        <?= nh_icon('alertTri', 20) ?>
+        <div class="grow"><strong>ระบบปิดรับข้อมูลชั่วคราว</strong> — <?= View::e(\App\Models\SystemStatus::closedMessage()) ?> (ดูข้อมูลเดิมได้ตามปกติ)</div>
+      </div>
+    <?php endif; ?>
   </div>
   <?= $content ?>
 </main>

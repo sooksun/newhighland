@@ -12,6 +12,7 @@ use App\Models\IslandEval;
 use App\Models\IslandOption;
 use App\Models\MasterSao;
 use App\Models\SaoNew;
+use App\Models\SystemStatus;
 use App\Services\IslandScoreService;
 use App\Services\SchoolContext;
 
@@ -70,6 +71,10 @@ class IslandEvalController
         if (!$scId || !Auth::canAccessSchool($scId)) {
             Flash::error('ไม่พบโรงเรียน หรือไม่มีสิทธิ์'); App::redirect('island');
         }
+        if (Auth::isSchool() && !SystemStatus::isOpen()) {
+            Flash::error(SystemStatus::closedMessage());
+            App::redirect('island');
+        }
         // โรงเรียนพื้นที่เกาะเดิม (ในรายชื่อ) ผ่านประเมินแล้ว → ไม่ต้องประเมินใหม่ ให้ไปรับรองการคงอยู่
         if (\App\Models\SchoolConfirm::inRoster(\App\Models\SchoolConfirm::AREA_ISLAND, $this->year, (string) $scId)) {
             Flash::info('โรงเรียนนี้เป็นพื้นที่เกาะเดิม (ผ่านการประเมินแล้ว) — โปรดยืนยันที่หน้ารับรองการคงอยู่');
@@ -114,6 +119,10 @@ class IslandEvalController
         Csrf::verify();
         $scId = (int) Request::post('sc_id', 0);
         $this->guard($scId);
+        if (Auth::isSchool() && !SystemStatus::isOpen()) {
+            Flash::error(SystemStatus::closedMessage());
+            App::redirect('island/eval?sc_id=' . $scId);
+        }
         $eval = IslandEval::find($scId, $this->year) ?? [];
 
         $form = [

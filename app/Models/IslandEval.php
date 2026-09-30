@@ -80,6 +80,22 @@ class IslandEval
         return Db::all($sql, $p);
     }
 
+    /**
+     * ทุกแถวประเมินพื้นที่เกาะ (ไม่กรอง sum_score) — สำหรับส่งออกรายงาน Excel
+     * @param int|null $saoId null = ทุกเขต (สพฐ.)
+     */
+    public static function listForExport(?int $saoId, int $year): array
+    {
+        $sql = 'SELECT e.*, m.sc_name AS m_sc_name, m.provinces AS m_provinces
+                  FROM island_eval e
+             LEFT JOIN master_school m ON m.sc_id = e.sc_id
+                 WHERE e.acadyears = ?';
+        $p = [$year];
+        if ($saoId !== null) { $sql .= ' AND m.sao_code = ?'; $p[] = $saoId; }
+        $sql .= ' ORDER BY e.provinces, e.sc_names LIMIT 20000';
+        return Db::all($sql, $p);
+    }
+
     /** สถิติการ์ดสรุป (รออนุมัติ/รับรองแล้ว/ไม่รับรอง) — เฉพาะที่ประเมินเสร็จ */
     public static function certStats(?int $saoId, int $year): array
     {

@@ -22,6 +22,8 @@ class HighlandEval
         'citeria02', 'citeria03', 'citeria04', 'citeria041', 'citeria06',
         'citeria07', 'citeria08', 'citeria09', 'citeria10',
         'citeria13', 'citeria14', 'citeria15', 'citeria16',
+        // เหตุผลที่ขอคัดกรองครั้งนี้ (สั้น ๆ ≤255 ตัวอักษร)
+        'screen_reason',
         // เอกสารแนบ
         'citeria02_refdoc', 'citeria03_refdoc', 'citeria04_refdoc', 'citeria06_refdoc',
         'citeria07_refdoc', 'citeria08_refdoc', 'citeria09_refdoc', 'citeria10_refdoc',
@@ -116,7 +118,7 @@ class HighlandEval
     public static function listForCert(?int $saoId, int $year, array $f = []): array
     {
         $sql = 'SELECT e.sc_id, e.sc_names, e.sao_names, e.provinces, e.sum_score, e.highland_type,
-                       e.confirmstatus, e.confirmcomment, e.spt_commit, e.spt_comment,
+                       e.confirmstatus, e.confirmcomment, e.spt_commit, e.spt_comment, e.citeria16_refdoc,
                        m.sc_name, m.provinces AS m_provinces
                   FROM highland_eval e
              LEFT JOIN master_school m ON m.sc_id = e.sc_id
@@ -127,6 +129,22 @@ class HighlandEval
         if (isset($f['status']) && $f['status'] !== '') { $sql .= ' AND COALESCE(e.confirmstatus,0) = ?'; $p[] = (int) $f['status']; }
         if (!empty($f['q']))              { $sql .= ' AND (e.sc_names LIKE ? OR m.sc_name LIKE ? OR e.sc_id LIKE ?)'; $p[] = '%' . $f['q'] . '%'; $p[] = '%' . $f['q'] . '%'; $p[] = '%' . $f['q'] . '%'; }
         $sql .= ' ORDER BY COALESCE(e.confirmstatus,0), e.provinces, e.sc_names LIMIT 2000';
+        return Db::all($sql, $p);
+    }
+
+    /**
+     * ทุกแถวประเมินพื้นที่สูง (ไม่กรอง sum_score) — สำหรับส่งออกรายงาน Excel
+     * @param int|null $saoId null = ทุกเขต (สพฐ.)
+     */
+    public static function listForExport(?int $saoId, int $year): array
+    {
+        $sql = 'SELECT e.*, m.sc_name AS m_sc_name, m.provinces AS m_provinces
+                  FROM highland_eval e
+             LEFT JOIN master_school m ON m.sc_id = e.sc_id
+                 WHERE e.acadyears = ?';
+        $p = [$year];
+        if ($saoId !== null) { $sql .= ' AND m.sao_code = ?'; $p[] = $saoId; }
+        $sql .= ' ORDER BY e.provinces, e.sc_names LIMIT 20000';
         return Db::all($sql, $p);
     }
 

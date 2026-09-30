@@ -1,0 +1,9 @@
+# กันการเข้าถึงโฟลเดอร์เครื่องมือจากเว็บโดยตรง (รองรับทั้ง Apache 2.2 และ 2.4)
+# สคริปต์ในโฟลเดอร์นี้ถูกเรียกใช้จากฝั่ง PHP เท่านั้น (require) หรือรันผ่าน php CLI
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+  Order allow,deny
+  Deny from all
+</IfModule>
